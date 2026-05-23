@@ -1,0 +1,13 @@
+StudyForge AI {{ .Chart.AppVersion }} deployed as {{ .Release.Name }}.
+
+Web    → https://{{ .Values.ingress.host }}
+API    → https://{{ .Values.ingress.apiHost }}/docs
+
+Image digests pinned:
+  web        {{ .Values.image.web.digest | default "(latest tag — dev only)" }}
+  api        {{ .Values.image.api.digest | default "(latest tag — dev only)" }}
+  ai-worker  {{ .Values.image.aiWorker.digest | default "(latest tag — dev only)" }}
+
+Confirm rollout:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "studyforge.fullname" . }}-api
+  kubectl -n {{ .Release.Namespace }} get pods -l app.kubernetes.io/instance={{ .Release.Name }}

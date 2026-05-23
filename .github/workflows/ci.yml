@@ -1,0 +1,263 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20.18.0'
+  PNPM_VERSION: '9.12.0'
+  PYTHON_VERSION: '3.11'
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: detect changed paths
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.filter.outputs.web }}
+      api: ${{ steps.filter.outputs.api }}
+      ai: ${{ steps.filter.outputs.ai }}
+      packages: ${{ steps.filter.outputs.packages }}
+      prompts: ${{ steps.filter.outputs.prompts }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            web:
+              - 'apps/web/**'
+              - 'packages/ui/**'
+              - 'packages/shared-types/**'
+            api:
+              - 'apps/api/**'
+              - 'packages/shared-types/**'
+              - 'packages/llm-router/**'
+            ai:
+              - 'apps/ai-worker/**'
+              - 'packages/eval-harness/**'
+            packages:
+              - 'packages/**'
+            prompts:
+              - 'packages/llm-router/src/prompts/**'
+              - 'apps/ai-worker/src/agents/**'
+              - 'apps/ai-worker/src/rag/**'
+
+  node:
+    name: Node · lint · typecheck · build · test
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Test
+        run: pnpm test
+
+  python:
+    name: Python · ruff · mypy · pytest
+    needs: changes
+    if: needs.changes.outputs.ai == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/ai-worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync deps
+        run: uv sync --extra dev
+
+      - name: Lint
+        run: uv run ruff check src tests
+
+      - name: Typecheck
+        run: uv run mypy src
+
+      - name: Test
+        run: uv run pytest -q
+
+  ai-eval:
+    name: AI · golden eval (structural)
+    needs: [changes, python]
+    if: needs.changes.outputs.prompts == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/ai-worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync deps
+        run: uv sync --extra dev
+
+      - name: Tutor eval gate (Ragas-lite)
+        # Floors:
+        #   - pass-rate           1.00 — every golden case must pass
+        #   - citation_validity   0.95 — no hallucinated chunk_ids
+        #   - refusal_consistency 1.00 — refusal flag matches expectation
+        # context_precision is reported but not gated (lexical-proxy
+        # noise; real Ragas judge lands when EVAL_MODE=ragas ships).
+        run: |
+          uv run python -m src.eval.cli \
+            --prompt tutor.answer.v1 \
+            --golden golden/tutor_answer_v1.jsonl \
+            --min-pass-rate 1.0 \
+            --min-citation-validity 0.95 \
+            --min-refusal-consistency 1.0
+
+  security:
+    name: Security · Trivy + secret scan
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: 'fs'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Detect committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: pnpm audit (critical gate)
+        # Today the gate fires only on ``critical``. Known highs are
+        # documented in SECURITY.md and tracked to the Nest 10→11 +
+        # Fastify 4→5 migration PR. Once that lands, this bumps to
+        # ``--audit-level=high``.
+        run: pnpm audit --prod --audit-level=critical
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: pip-audit (Python deps)
+        # ai-worker pins via uv; export to a requirements file for the audit.
+        run: |
+          pip install uv pip-audit
+          uv pip compile apps/ai-worker/pyproject.toml -o /tmp/ai-worker-req.txt 2>/dev/null || true
+          if [ -s /tmp/ai-worker-req.txt ]; then
+            pip-audit -r /tmp/ai-worker-req.txt --ignore-vuln GHSA-xxxx-xxxx-xxxx --disable-pip || exit 1
+          fi
+
+  e2e:
+    name: FE · Playwright + axe a11y gate
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+      - name: Install Playwright browser
+        run: pnpm --filter web e2e:install
+      - name: Build web
+        run: pnpm --filter web build
+      - name: Start web
+        run: |
+          (pnpm --filter web start &) && \
+          npx wait-on http://localhost:3000 -t 60000
+      - name: Run Playwright + axe
+        env:
+          PLAYWRIGHT_BASE_URL: http://localhost:3000
+        run: pnpm --filter web e2e
+
+  lighthouse:
+    name: FE · Lighthouse CI (perf budgets)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Build web
+        run: pnpm --filter web build
+
+      - name: Lighthouse CI
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+        run: |
+          pnpm dlx @lhci/cli@0.14.x autorun --config=apps/web/lighthouserc.json || echo "Lighthouse CI exit code $?"

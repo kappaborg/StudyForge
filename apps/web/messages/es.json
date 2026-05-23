@@ -1,0 +1,34 @@
+{
+  "nav": {
+    "dashboard": "Inicio",
+    "instructor": "Instructor",
+    "settings": "Ajustes",
+    "search": "Buscar"
+  },
+  "dashboard": {
+    "title": "Inicio",
+    "subtitle": "Sube materiales, haz preguntas y continúa donde lo dejaste.",
+    "upload": "Subir materiales",
+    "openWorkspace": "Abrir espacio de trabajo",
+    "askAnything": "Pregunta lo que sea sobre tus materiales",
+    "yourMaterials": "Tus materiales"
+  },
+  "budget": {
+    "dailyRequests": "Solicitudes diarias",
+    "unlimited": "Ilimitado (BYOK)",
+    "resets": "Reinicia",
+    "alwaysFree": "siempre gratis",
+    "capReached": "Límite alcanzado. Añade una clave BYOK en Ajustes para uso ilimitado."
+  },
+  "workspace": {
+    "materials": "Materiales",
+    "roadmap": "Plan",
+    "tutor": "Tutor",
+    "flashcards": "Tarjetas",
+    "quizzes": "Cuestionarios",
+    "graph": "Grafo",
+    "diagrams": "Diagramas",
+    "slides": "Diapositivas",
+    "analytics": "Analíticas"
+  }
+}

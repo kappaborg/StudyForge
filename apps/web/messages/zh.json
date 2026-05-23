@@ -1,0 +1,34 @@
+{
+  "nav": {
+    "dashboard": "仪表板",
+    "instructor": "教师",
+    "settings": "设置",
+    "search": "搜索"
+  },
+  "dashboard": {
+    "title": "仪表板",
+    "subtitle": "上传材料,提出问题,继续学习。",
+    "upload": "上传材料",
+    "openWorkspace": "打开工作区",
+    "askAnything": "向你的材料提问",
+    "yourMaterials": "你的材料"
+  },
+  "budget": {
+    "dailyRequests": "每日 AI 请求",
+    "unlimited": "无限制 (BYOK)",
+    "resets": "重置",
+    "alwaysFree": "始终免费",
+    "capReached": "已达上限。在设置中添加 BYOK 密钥以获得无限使用。"
+  },
+  "workspace": {
+    "materials": "材料",
+    "roadmap": "学习路线",
+    "tutor": "导师",
+    "flashcards": "记忆卡",
+    "quizzes": "测验",
+    "graph": "图谱",
+    "diagrams": "图表",
+    "slides": "幻灯片",
+    "analytics": "分析"
+  }
+}

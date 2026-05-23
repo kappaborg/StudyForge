@@ -1,0 +1,1047 @@
+// StudyForge AI — Prisma schema (Deliverable 3)
+// PostgreSQL 16 + pgvector. See docs/architecture/03-database-schema.md for design rationale.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgcrypto, vector, pg_trgm, citext]
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tenancy & identity
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// A Tenant owns rows. Free / Pro / BYOK users get an implicit personal tenant;
+/// universities get a named Institution-backed tenant.
+model Tenant {
+  id            String       @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String       @unique
+  kind          TenantKind   @default(personal)
+  region        DataRegion   @default(us)
+  institutionId String?      @db.Uuid
+  institution   Institution? @relation(fields: [institutionId], references: [id])
+  // StudyForge is free for every tenant. ``byok`` is set when the tenant
+  // adds their own provider key — it unlocks the cap-bypass code path in
+  // the cost router but doesn't change pricing (there is none).
+  tier          TierName     @default(free)
+  // KEK-wrapped DEK for per-tenant envelope encryption of secrets.
+  wrappedDek    Bytes?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+
+  users          User[]
+  courses        Course[]
+  folders        Folder[]
+  localModels    LocalModel[]
+  examScopes     ExamScope[]
+  uploadBatches  UploadBatch[]
+  documents      Document[]
+  chatSessions   ChatSession[]
+  notifications  Notification[]
+  usageEvents    UsageEvent[]
+  tokenBudget    TokenBudget?
+  apiKeys        ApiKey[]
+  auditLogs      AuditLog[]
+  jobs           Job[]
+  dsarRequests   DSARRequest[]
+  cachedResponse CachedResponse[]
+  studentModels  StudentModel[]
+
+  @@index([institutionId])
+  @@index([deletedAt])
+}
+
+enum TenantKind {
+  personal
+  institutional
+}
+
+enum DataRegion {
+  us
+  eu
+  ap
+}
+
+// StudyForge is free for everyone. The enum survives as a single-source
+// distinction the cost router consults: ``free`` users hit the daily
+// platform budget, ``byok`` users bypass it.
+enum TierName {
+  free
+  byok
+}
+
+/// A degree-granting institution: the LTI/SAML identity is bound here.
+model Institution {
+  id              String     @id @default(uuid()) @db.Uuid
+  name            String
+  domain          String     @unique
+  ltiIssuer       String?    @unique
+  ltiClientId     String?
+  ltiDeploymentId String?
+  samlMetadata    String?
+  region          DataRegion @default(us)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+  deletedAt       DateTime?
+
+  tenants Tenant[]
+
+  @@index([ltiIssuer])
+  @@index([deletedAt])
+}
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email         String
+  emailVerified Boolean   @default(false)
+  passwordHash  String?
+  role          UserRole  @default(student)
+  locale        String    @default("en")
+  timezone      String    @default("UTC")
+  oauthProvider String?
+  oauthSub      String?
+  // FERPA: minor protections kick in based on this field.
+  isMinor       Boolean   @default(false)
+  lastSeenAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  enrollments   Enrollment[]
+  uploads       UploadBatch[]
+  chatSessions  ChatSession[]
+  quizAttempts  QuizAttempt[]
+  notifications Notification[]
+  apiKeys       ApiKey[]
+  studentModels StudentModel[]
+  dsarRequests  DSARRequest[]
+  usageEvents   UsageEvent[]
+  sessions      Session[]
+  localModels   LocalModel[]
+  examScopes    ExamScope[]
+
+  @@unique([tenantId, email])
+  @@unique([oauthProvider, oauthSub])
+  @@index([tenantId, deletedAt])
+  @@index([email])
+}
+
+enum UserRole {
+  student
+  instructor
+  admin
+  institution_admin
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Courses & enrollment
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Course {
+  id                 String           @id @default(uuid()) @db.Uuid
+  tenantId           String           @db.Uuid
+  tenant             Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title              String
+  code               String? // e.g. CS-101
+  description        String?
+  visibility         CourseVisibility @default(private)
+  // Hash of the canonical normalized document set; drives shared-artifact cache lookups.
+  contentHash        String?          @db.Citext
+  // When set, this course reuses generated artifacts from another course with the
+  // same contentHash. Reading artifacts SHOULD follow this link.
+  sharedFromCourseId String?          @db.Uuid
+  sharedFromCourse   Course?          @relation("SharedFrom", fields: [sharedFromCourseId], references: [id])
+  linkedFromCourses  Course[]         @relation("SharedFrom")
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  deletedAt          DateTime?
+
+  enrollments    Enrollment[]
+  uploadBatches  UploadBatch[]
+  documents      Document[]
+  concepts       Concept[]
+  conceptEdges   ConceptEdge[]
+  roadmaps       Roadmap[]
+  flashcardDecks FlashcardDeck[]
+  quizzes        Quiz[]
+  chatSessions   ChatSession[]
+  studentModels  StudentModel[]
+  sharedArtifact SharedArtifact?
+
+  @@index([tenantId, deletedAt])
+  @@index([contentHash])
+  @@index([sharedFromCourseId])
+}
+
+enum CourseVisibility {
+  private
+  shared // discoverable by other tenants for artifact donation
+  public // publicly visible
+}
+
+model Enrollment {
+  id       String         @id @default(uuid()) @db.Uuid
+  userId   String         @db.Uuid
+  user     User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId String         @db.Uuid
+  course   Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  role     EnrollmentRole @default(student)
+  joinedAt DateTime       @default(now())
+  leftAt   DateTime?
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+}
+
+enum EnrollmentRole {
+  student
+  ta
+  instructor
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ingestion: uploads → documents → chunks
+// ─────────────────────────────────────────────────────────────────────────────
+
+model UploadBatch {
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @db.Uuid
+  tenant         Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId         String      @db.Uuid
+  user           User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId       String?     @db.Uuid
+  course         Course?     @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  // Personal-flow target. Resolves to Inbox at complete time when null.
+  folderId       String?     @db.Uuid
+  state          UploadState @default(initiated)
+  // sha256 of the request payload; identifies the canonical upload bundle.
+  bundleSha256   String      @db.Citext
+  sizeBytes      BigInt
+  s3Key          String
+  // MIME reported by the browser at init time. Persisted so the complete
+  // handler can dispatch to the right parser without guessing from the
+  // filename — pptx/docx files don't otherwise round-trip cleanly.
+  mime           String?
+  // Surface-level safety findings; structured forms live in safety_findings JSON.
+  safetyFlags    String[]
+  safetyFindings Json?
+  errorReason    String?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  completedAt    DateTime?
+  deletedAt      DateTime?
+
+  documents Document[]
+
+  @@index([tenantId, state])
+  @@index([userId, createdAt])
+  @@index([bundleSha256])
+}
+
+enum UploadState {
+  initiated
+  uploading
+  uploaded
+  scanning
+  extracting
+  embedding
+  ready
+  failed
+  quarantined
+}
+
+model Document {
+  id               String      @id @default(uuid()) @db.Uuid
+  tenantId         String      @db.Uuid
+  tenant           Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  courseId         String?     @db.Uuid
+  course           Course?     @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  // Personal-flow grouping. Every document lives in exactly one Folder; the
+  // ``courseId`` column above is reserved for institutional / LTI flows.
+  folderId         String?     @db.Uuid
+  folder           Folder?     @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  uploadBatchId    String      @db.Uuid
+  uploadBatch      UploadBatch @relation(fields: [uploadBatchId], references: [id], onDelete: Cascade)
+  mime             String
+  originalFilename String
+  s3Key            String
+  pageCount        Int?
+  language         String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
+
+  versions DocumentVersion[]
+
+  @@index([tenantId, courseId])
+  @@index([tenantId, folderId, deletedAt])
+  @@index([uploadBatchId])
+}
+
+/// Personal-flow material grouping. ``kind`` distinguishes user folders
+/// from system folders (Inbox auto-receives new uploads; Trash collects
+/// soft-deleted documents). Every tenant gets exactly one Inbox + Trash
+/// on creation.
+model Folder {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @db.Uuid
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  slug      String
+  color     String?
+  kind      FolderKind @default(materials)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+
+  documents   Document[]
+  localModels LocalModel[]
+  examScopes  ExamScope[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, deletedAt])
+  @@index([tenantId, kind])
+}
+
+enum FolderKind {
+  materials
+  inbox
+  trash
+}
+
+/// Registry row for a browser-local "personal offline tutor" built from one
+/// folder. The actual vectors live in the user's IndexedDB; this row tracks
+/// (a) that the model exists so the dashboard can render a card, (b) when
+/// it was built, (c) whether new documents have arrived since it was built
+/// (``stale``). One row per (userId, folderId).
+model LocalModel {
+  id          String           @id @default(uuid()) @db.Uuid
+  userId      String           @db.Uuid
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId    String           @db.Uuid
+  tenant      Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  folderId    String           @db.Uuid
+  folder      Folder           @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  status      LocalModelStatus @default(building)
+  chunkCount  Int              @default(0)
+  // Reported by the client after it writes the index to IndexedDB. Used to
+  // power the storage meter on the dashboard.
+  sizeBytes   BigInt           @default(0)
+  // Bumped to true when documents in the source folder change. The user
+  // sees a "Stale" badge with a Rebuild button.
+  stale       Boolean          @default(false)
+  embedderId  String?          // e.g. "Xenova/all-MiniLM-L6-v2"
+  embedderDim Int?             // vector dimension
+  builtAt     DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  deletedAt   DateTime?
+
+  @@unique([userId, folderId])
+  @@index([tenantId, userId])
+  @@index([folderId, deletedAt])
+}
+
+enum LocalModelStatus {
+  building
+  ready
+  failed
+}
+
+/// A student's structured capture of "what's on the exam." Created by
+/// pasting the professor's scope message; the parser produces a list of
+/// (mode, chapters, topics) entries stored in ``scopes`` JSONB. Every
+/// downstream surface (offline tutor, flashcards, quizzes, roadmap) accepts
+/// an ``examScopeId`` and filters its retrieval pool to the union of the
+/// scope's chapter sets.
+model ExamScope {
+  id        String     @id @default(uuid()) @db.Uuid
+  tenantId  String     @db.Uuid
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String     @db.Uuid
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  folderId  String     @db.Uuid
+  folder    Folder     @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  title     String
+  examDate  DateTime?
+  // Array of { mode: 'theory'|'problems', chapters: int[], topics: string[] }
+  // entries. Stored as JSONB so the parser can evolve without a migration.
+  scopes    Json
+  // Free-form text the student pasted, kept for diffing if the parser
+  // mis-extracts and the student edits the scope manually.
+  rawText   String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  deletedAt DateTime?
+
+  @@index([tenantId, userId, deletedAt])
+  @@index([folderId])
+}
+
+/// Server-side session for real-auth deployments. ``tokenHash`` is the
+/// SHA-256 of the random session token; the plaintext only lives in the
+/// httpOnly cookie. Sessions are revoked by deleting the row, which is
+/// why we use this instead of stateless JWT.
+model Session {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @db.Uuid
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+  userAgent  String?
+  ipHash     String?
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// Source-of-truth versioning. Re-uploading a file creates a new DocumentVersion.
+/// Generated artifacts cite a specific (documentId, versionId).
+model DocumentVersion {
+  id            String   @id @default(uuid()) @db.Uuid
+  documentId    String   @db.Uuid
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  // Content hash of the extracted, normalized text+structure (NOT the raw bytes).
+  // Identifies semantic equivalence across uploads with formatting differences.
+  contentSha256 String   @db.Citext
+  // Bytes hash for byte-identical detection.
+  bytesSha256   String   @db.Citext
+  extractedAt   DateTime @default(now())
+
+  chunks Chunk[]
+
+  @@unique([documentId, versionNumber])
+  @@index([contentSha256])
+}
+
+/// A retrieval unit. Carries the embedding alongside its metadata for hybrid search.
+model Chunk {
+  id                String                       @id @default(uuid()) @db.Uuid
+  documentVersionId String                       @db.Uuid
+  documentVersion   DocumentVersion              @relation(fields: [documentVersionId], references: [id], onDelete: Cascade)
+  ordinal           Int
+  modality          ChunkModality                @default(text)
+  page              Int?
+  slide             Int?
+  cell              Int?
+  charStart         Int
+  charEnd           Int
+  // Plain text, used for BM25 and tutor context.
+  content           String
+  // BGE-M3 dense embedding (1024 dims). Optional because some agents may pre-index lazily.
+  embedding         Unsupported("vector(1024)")?
+  // tsvector populated by trigger for BM25-style queries.
+  tsv               Unsupported("tsvector")?
+  // Free-form modality details: language, code language, OCR confidence, etc.
+  meta              Json?
+  createdAt         DateTime                     @default(now())
+
+  citations Citation[]
+  // Vector index created via raw migration SQL (HNSW with cosine ops).
+  // @@index([embedding(ops: VectorCosineOps)], type: Hnsw)
+
+  @@index([documentVersionId, ordinal])
+}
+
+enum ChunkModality {
+  text
+  code
+  table
+  formula
+  image_ocr
+  slide
+  notebook_cell
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Knowledge graph
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Concept {
+  id          String                       @id @default(uuid()) @db.Uuid
+  courseId    String                       @db.Uuid
+  course      Course                       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  label       String
+  description String?
+  difficulty  Int                          @default(0) // 0..100
+  // Coordinates in the rendered graph (optional layout cache).
+  position    Json?
+  // Aggregate embedding for concept-level retrieval.
+  embedding   Unsupported("vector(1024)")?
+  createdAt   DateTime                     @default(now())
+  updatedAt   DateTime                     @updatedAt
+
+  outgoingEdges ConceptEdge[] @relation("EdgeFrom")
+  incomingEdges ConceptEdge[] @relation("EdgeTo")
+  milestones    Milestone[]
+  flashcards    Flashcard[]
+  quizItems     QuizItem[]
+
+  @@index([courseId])
+  @@index([courseId, label])
+}
+
+model ConceptEdge {
+  id        String          @id @default(uuid()) @db.Uuid
+  courseId  String          @db.Uuid
+  course    Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  fromId    String          @db.Uuid
+  from      Concept         @relation("EdgeFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  toId      String          @db.Uuid
+  to        Concept         @relation("EdgeTo", fields: [toId], references: [id], onDelete: Cascade)
+  kind      ConceptEdgeKind
+  weight    Float           @default(1.0)
+  createdAt DateTime        @default(now())
+
+  @@unique([fromId, toId, kind])
+  @@index([courseId])
+  @@index([toId])
+}
+
+enum ConceptEdgeKind {
+  prerequisite_of
+  related_to
+  example_of
+  derived_from
+  contradicts
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Roadmap & milestones
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Roadmap {
+  id        String    @id @default(uuid()) @db.Uuid
+  courseId  String    @db.Uuid
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  userId    String?   @db.Uuid // null = course default; per-user when personalized
+  title     String
+  weeks     Int
+  deadline  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  milestones Milestone[]
+
+  @@index([courseId, userId])
+}
+
+model Milestone {
+  id          String          @id @default(uuid()) @db.Uuid
+  roadmapId   String          @db.Uuid
+  roadmap     Roadmap         @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  conceptId   String?         @db.Uuid
+  concept     Concept?        @relation(fields: [conceptId], references: [id], onDelete: SetNull)
+  weekIndex   Int
+  ordinal     Int
+  title       String
+  effortMin   Int // estimated minutes
+  status      MilestoneStatus @default(pending)
+  unlockedAt  DateTime?
+  completedAt DateTime?
+
+  @@index([roadmapId, weekIndex, ordinal])
+}
+
+enum MilestoneStatus {
+  locked
+  pending
+  in_progress
+  completed
+  skipped
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Flashcards
+// ─────────────────────────────────────────────────────────────────────────────
+
+model FlashcardDeck {
+  id        String    @id @default(uuid()) @db.Uuid
+  courseId  String    @db.Uuid
+  course    Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  flashcards Flashcard[]
+
+  @@index([courseId])
+}
+
+model Flashcard {
+  id            String        @id @default(uuid()) @db.Uuid
+  deckId        String        @db.Uuid
+  deck          FlashcardDeck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+  conceptId     String?       @db.Uuid
+  concept       Concept?      @relation(fields: [conceptId], references: [id], onDelete: SetNull)
+  front         String
+  back          String
+  // Citations are written to the Citation table; this is a denormalized count for the UI.
+  citationCount Int           @default(0)
+  // SRS state lives per-user in flashcard_review (not modeled here yet).
+  createdAt     DateTime      @default(now())
+  deletedAt     DateTime?
+
+  @@index([deckId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quizzes
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Quiz {
+  id           String    @id @default(uuid()) @db.Uuid
+  courseId     String    @db.Uuid
+  course       Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title        String
+  // Aggregate difficulty across items, used by adaptive scheduler.
+  difficulty   Int       @default(50)
+  timeLimitSec Int?
+  createdAt    DateTime  @default(now())
+  deletedAt    DateTime?
+
+  items    QuizItem[]
+  attempts QuizAttempt[]
+
+  @@index([courseId])
+}
+
+model QuizItem {
+  id         String       @id @default(uuid()) @db.Uuid
+  quizId     String       @db.Uuid
+  quiz       Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  conceptId  String?      @db.Uuid
+  concept    Concept?     @relation(fields: [conceptId], references: [id], onDelete: SetNull)
+  kind       QuizItemKind
+  prompt     String
+  // Polymorphic answer payload: MCQ options, coding test cases, scenario branches, etc.
+  payload    Json
+  rationale  String
+  // Difficulty 0..100 for adaptive sequencing.
+  difficulty Int          @default(50)
+  createdAt  DateTime     @default(now())
+
+  @@index([quizId])
+}
+
+enum QuizItemKind {
+  mcq
+  true_false
+  short_answer
+  coding
+  scenario
+}
+
+model QuizAttempt {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @db.Uuid
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  quizId      String       @db.Uuid
+  quiz        Quiz         @relation(fields: [quizId], references: [id], onDelete: Cascade)
+  state       AttemptState @default(in_progress)
+  score       Float?
+  // Per-item responses (itemId → response payload + correctness).
+  responses   Json         @default("{}")
+  startedAt   DateTime     @default(now())
+  submittedAt DateTime?
+  durationSec Int?
+
+  @@index([userId, quizId])
+  @@index([quizId, state])
+}
+
+enum AttemptState {
+  in_progress
+  submitted
+  graded
+  abandoned
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tutor chat + citations
+// ─────────────────────────────────────────────────────────────────────────────
+
+model ChatSession {
+  id        String    @id @default(uuid()) @db.Uuid
+  tenantId  String    @db.Uuid
+  tenant    Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId    String    @db.Uuid
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId  String?   @db.Uuid
+  course    Course?   @relation(fields: [courseId], references: [id], onDelete: SetNull)
+  title     String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  messages Message[]
+
+  @@index([userId, createdAt])
+  @@index([courseId, userId])
+}
+
+model Message {
+  id         String      @id @default(uuid()) @db.Uuid
+  sessionId  String      @db.Uuid
+  session    ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role       MessageRole
+  content    String
+  // Provider / model / tokens, recorded for traceability.
+  providerId String?
+  model      String?
+  tokensIn   Int?
+  tokensOut  Int?
+  cacheHit   Boolean?
+  // If the agent refused due to missing citations, this is true.
+  refusal    Boolean     @default(false)
+  createdAt  DateTime    @default(now())
+
+  citations Citation[]
+
+  @@index([sessionId, createdAt])
+}
+
+enum MessageRole {
+  user
+  assistant
+  system
+  tool
+}
+
+/// Concrete citation linking a Message to a Chunk. The presence of at least one
+/// row for an assistant Message is enforced at the response layer.
+model Citation {
+  id        String   @id @default(uuid()) @db.Uuid
+  messageId String   @db.Uuid
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  chunkId   String   @db.Uuid
+  chunk     Chunk    @relation(fields: [chunkId], references: [id], onDelete: Cascade)
+  score     Float
+  // Quoted span within the chunk (optional, for UI highlight).
+  spanStart Int?
+  spanEnd   Int?
+  createdAt DateTime @default(now())
+
+  @@index([messageId])
+  @@index([chunkId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Student model (mastery)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// BKT/IRT-lite mastery per user-course. The mastery field is a JSON map of
+/// conceptId → { mastery: 0..1, attempts: int, correctRate: 0..1, lastSeenAt: ts }.
+model StudentModel {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String   @db.Uuid
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  courseId    String   @db.Uuid
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  mastery     Json     @default("{}")
+  // Free-form preferences: pacing, learning style, language depth.
+  preferences Json     @default("{}")
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, courseId])
+  @@index([tenantId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Notifications
+// ─────────────────────────────────────────────────────────────────────────────
+
+model Notification {
+  id           String              @id @default(uuid()) @db.Uuid
+  tenantId     String              @db.Uuid
+  tenant       Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId       String              @db.Uuid
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         NotificationKind
+  channel      NotificationChannel
+  subject      String
+  body         String
+  meta         Json?
+  state        NotificationState   @default(queued)
+  scheduledFor DateTime?
+  deliveredAt  DateTime?
+  readAt       DateTime?
+  createdAt    DateTime            @default(now())
+
+  @@index([userId, state, scheduledFor])
+}
+
+enum NotificationKind {
+  upload_ready
+  milestone_due
+  quiz_due
+  weekly_digest
+  abuse_review
+  billing_warning
+  system
+}
+
+enum NotificationChannel {
+  email
+  push
+  in_app
+}
+
+enum NotificationState {
+  queued
+  sending
+  delivered
+  failed
+  read
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Usage tracking + budgets (no billing — StudyForge is free for every user).
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Append-only ledger of every LLM/embedding/rerank call. Source of truth for
+/// quotas + per-tenant cost dashboards. Cost rows survive the Stripe deletion
+/// because they're useful for ops even when nobody pays.
+model UsageEvent {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @db.Uuid
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId       String?  @db.Uuid
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  providerId   String
+  model        String
+  agent        String // e.g. tutor.answer.v1
+  tokensIn     Int
+  tokensOut    Int
+  cacheHit     Boolean  @default(false)
+  // Stored in micro-USD to avoid float drift. Divide by 1_000_000 for display.
+  costMicroUsd Int      @default(0)
+  byok         Boolean  @default(false)
+  latencyMs    Int?
+  ts           DateTime @default(now())
+
+  @@index([tenantId, ts])
+  @@index([userId, ts])
+  @@index([providerId, ts])
+}
+
+/// Per-tenant token budget for the free platform pool. BYOK tenants
+/// (``Tenant.tier = byok``) bypass this in the cost router; everyone else
+/// gets a generous daily cap so casual users can use the product without
+/// paying anything, and one user can't drain the platform key.
+model TokenBudget {
+  tenantId      String        @id @db.Uuid
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  dailyLimit    Int
+  monthlyLimit  Int // -1 means unlimited (BYOK)
+  dailyUsed     Int           @default(0)
+  monthlyUsed   Int           @default(0)
+  dayResetAt    DateTime
+  monthResetAt  DateTime
+  exhaustPolicy ExhaustPolicy @default(downshift)
+  updatedAt     DateTime      @updatedAt
+}
+
+enum ExhaustPolicy {
+  downshift
+  rate_limit
+  block
+}
+
+/// Free-tier provider quota tracking with sliding windows. One row per provider.
+model ProviderQuota {
+  providerId          String    @id
+  windowSec           Int
+  requestsPerWindow   Int
+  tokensPerWindow     Int
+  requestsRemaining   Int
+  tokensRemaining     Int
+  windowResetAt       DateTime
+  healthy             Boolean   @default(true)
+  consecutiveFailures Int       @default(0)
+  lastFailureAt       DateTime?
+  updatedAt           DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BYOK + shared cache + semantic cache
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// BYOK encrypted key vault. The `cipher` column holds the AES-GCM ciphertext;
+/// the wrapping DEK lives on Tenant.wrappedDek. Plaintext NEVER persists.
+model ApiKey {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @db.Uuid
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId      String    @db.Uuid
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider    String // openai | anthropic | google | openrouter | groq
+  label       String?
+  last4       String
+  cipher      Bytes
+  nonce       Bytes
+  // GCM authentication tag — required to verify ciphertext integrity.
+  tag         Bytes
+  validatedAt DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@unique([userId, provider, last4])
+  @@index([tenantId])
+}
+
+/// Pointer to the canonical Course that hosts artifacts for a given content hash.
+/// A new course whose upload bundle hashes to the same value links here instead of
+/// regenerating artifacts.
+model SharedArtifact {
+  id                String    @id @default(uuid()) @db.Uuid
+  contentHash       String    @unique @db.Citext
+  canonicalCourseId String    @unique @db.Uuid
+  canonicalCourse   Course    @relation(fields: [canonicalCourseId], references: [id], onDelete: Cascade)
+  qualityValidated  Boolean   @default(false)
+  // Aggregate Ragas scores at the time of validation.
+  qualityScores     Json?
+  validatedAt       DateTime?
+  createdAt         DateTime  @default(now())
+
+  @@index([qualityValidated])
+}
+
+/// Semantic cache reference. `queryEmbedding` is the BGE-M3 embedding of the
+/// normalized query; `chunkSetHash` is the sha256 of the retrieved chunk IDs.
+model CachedResponse {
+  id             String                      @id @default(uuid()) @db.Uuid
+  tenantId       String                      @db.Uuid
+  tenant         Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  courseId       String?                     @db.Uuid
+  queryEmbedding Unsupported("vector(1024)")
+  chunkSetHash   String                      @db.Citext
+  response       String
+  citationsJson  Json
+  hits           Int                         @default(0)
+  freshnessSec   Int                         @default(3600)
+  expiresAt      DateTime
+  createdAt      DateTime                    @default(now())
+
+  @@index([tenantId, courseId])
+  @@index([chunkSetHash])
+  @@index([expiresAt])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Compliance: audit log, DSAR, feature flags, jobs
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Hash-chained, append-only audit trail. `hash` = sha256(prevHash || canonicalJson(row)).
+/// Verified by a nightly job; tamper attempts surface as alerts.
+model AuditLog {
+  id        BigInt   @id @default(autoincrement())
+  tenantId  String?  @db.Uuid
+  tenant    Tenant?  @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  actorId   String?  @db.Uuid
+  actorKind String? // user | system | service
+  action    String // e.g. dsar.erase, course.delete, byok.add
+  resource  String? // e.g. user:<uuid>
+  payload   Json?
+  prevHash  Bytes
+  hash      Bytes    @unique
+  ts        DateTime @default(now())
+
+  @@index([tenantId, ts])
+  @@index([action, ts])
+}
+
+/// Data Subject Access Request — GDPR Art. 15 (access), 17 (erasure), 20 (portability).
+model DSARRequest {
+  id            String    @id @default(uuid()) @db.Uuid
+  tenantId      String    @db.Uuid
+  tenant        Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  userId        String    @db.Uuid
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind          DSARKind
+  state         DSARState @default(received)
+  evidenceS3Key String? // export artifact, signed URL on demand
+  receiptHash   Bytes?
+  dueBy         DateTime
+  createdAt     DateTime  @default(now())
+  completedAt   DateTime?
+
+  @@index([state, dueBy])
+}
+
+enum DSARKind {
+  access
+  erasure
+  portability
+  rectification
+}
+
+enum DSARState {
+  received
+  in_progress
+  completed
+  rejected
+}
+
+model FeatureFlag {
+  name        String   @id
+  description String?
+  enabled     Boolean  @default(false)
+  rules       Json? // tenant / user / percentage targeting
+  updatedAt   DateTime @updatedAt
+}
+
+/// Durable orchestrator + worker job state. Idempotency key prevents duplicate
+/// side effects under retries.
+model Job {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String?   @db.Uuid
+  tenant         Tenant?   @relation(fields: [tenantId], references: [id], onDelete: SetNull)
+  // Optional initiator. Free-floating system jobs (cache purge, embed writer)
+  // leave this null; user-initiated runs (tutor.answer.v1, quiz.generate) carry it.
+  userId         String?   @db.Uuid
+  kind           String // e.g. ingest.process, quiz.generate.batch, tutor.answer.v1
+  state          JobState  @default(queued)
+  attempts       Int       @default(0)
+  maxAttempts    Int       @default(5)
+  idempotencyKey String    @unique
+  payload        Json
+  // Denormalised step state machine. Querying individual steps is rare; JSONB
+  // keeps the orchestrator's resumption path a single-row read.
+  steps          Json      @default("[]")
+  result         Json?
+  error          String?
+  scheduledFor   DateTime  @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([state, scheduledFor])
+  @@index([kind, state])
+  @@index([userId, createdAt])
+  @@index([tenantId, kind, createdAt])
+}
+
+enum JobState {
+  queued
+  running
+  succeeded
+  failed
+  dead_letter
+}

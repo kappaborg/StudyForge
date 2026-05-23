@@ -1,0 +1,113 @@
+name: studyforge-dev
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: studyforge-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: studyforge
+      POSTGRES_PASSWORD: studyforge
+      POSTGRES_DB: studyforge
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U studyforge -d studyforge"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: studyforge-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: studyforge-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: studyforge
+      MINIO_ROOT_PASSWORD: studyforge-dev-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.10
+    container_name: studyforge-meili
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: studyforge-meili-master
+      MEILI_ENV: development
+    ports:
+      - "7700:7700"
+    volumes:
+      - meili-data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: studyforge-chroma
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma-data:/chroma/chroma
+
+  ollama:
+    # Opt-in: ~3 GB image. Only needed when testing local-model fallback paths.
+    # Enable with: docker compose --profile local-ai up -d
+    profiles: ["local-ai"]
+    image: ollama/ollama:latest
+    container_name: studyforge-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+
+  clamav:
+    # Opt-in: only needed when working on the upload safety pipeline.
+    # Enable with: docker compose --profile malware up -d
+    profiles: ["malware"]
+    image: clamav/clamav-debian:stable
+    container_name: studyforge-clamav
+    restart: unless-stopped
+    ports:
+      - "3310:3310"
+    volumes:
+      - clamav-data:/var/lib/clamav
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  meili-data:
+  chroma-data:
+  ollama-data:
+  clamav-data:

@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "studyforge.fullname" . }}-web
+  labels:
+    {{- include "studyforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "studyforge.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "studyforge.fullname" . }}-api
+  labels:
+    {{- include "studyforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "studyforge.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "studyforge.fullname" . }}-ai-worker
+  labels:
+    {{- include "studyforge.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-worker
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "studyforge.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ai-worker

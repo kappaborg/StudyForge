@@ -1,0 +1,32 @@
+{
+  "ci": {
+    "collect": {
+      "startServerCommand": "pnpm --filter web start",
+      "startServerReadyPattern": "Ready in",
+      "url": [
+        "http://localhost:3000/",
+        "http://localhost:3000/dashboard",
+        "http://localhost:3000/courses/demo",
+        "http://localhost:3000/settings/byok"
+      ],
+      "numberOfRuns": 3
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", { "minScore": 0.9 }],
+        "categories:accessibility": ["error", { "minScore": 0.95 }],
+        "categories:best-practices": ["warn", { "minScore": 0.9 }],
+        "categories:seo": ["warn", { "minScore": 0.9 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 2000 }],
+        "interaction-to-next-paint": ["error", { "maxNumericValue": 200 }],
+        "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+        "resource-summary:script:size": ["error", { "maxNumericValue": 200000 }],
+        "resource-summary:stylesheet:size": ["error", { "maxNumericValue": 30000 }],
+        "total-byte-weight": ["error", { "maxNumericValue": 350000 }]
+      }
+    },
+    "upload": {
+      "target": "temporary-public-storage"
+    }
+  }
+}

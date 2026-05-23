@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  /* ── Light theme (default) ─────────────────────────────────────────── */
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+    --border: 240 6% 90%;
+    --accent: 240 5% 96%;
+    --accent-foreground: 240 10% 4%;
+    --ring: 240 10% 4%;
+    --primary: 235 80% 56%;
+    --primary-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 142 64% 36%;
+    --warning: 38 92% 50%;
+    --radius: 0.5rem;
+  }
+
+  /* ── Dark theme ───────────────────────────────────────────────────── */
+  :root[data-theme='dark'],
+  .dark {
+    --background: 240 10% 4%;
+    --foreground: 0 0% 98%;
+    --muted: 240 4% 16%;
+    --muted-foreground: 240 5% 65%;
+    --border: 240 4% 16%;
+    --accent: 240 4% 16%;
+    --accent-foreground: 0 0% 98%;
+    --ring: 0 0% 98%;
+    --primary: 235 80% 64%;
+    --primary-foreground: 240 10% 4%;
+  }
+
+  /* ── Reduced motion ───────────────────────────────────────────────── */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+
+  /* ── Base ─────────────────────────────────────────────────────────── */
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    font-feature-settings:
+      'cv02',
+      'cv03',
+      'cv04',
+      'cv11';
+  }
+
+  /* ── Focus ring (WCAG 2.2 AA) ─────────────────────────────────────── */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+}
+
+@layer utilities {
+  /* Glassmorphism layer — opt-in via `data-glass` on a container. Honours
+     prefers-reduced-transparency so we don't fight the OS. */
+  [data-glass='true'] {
+    background-color: hsl(var(--background) / 0.6);
+    backdrop-filter: saturate(140%) blur(12px);
+    -webkit-backdrop-filter: saturate(140%) blur(12px);
+    border: 1px solid hsl(var(--border) / 0.6);
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    [data-glass='true'] {
+      background-color: hsl(var(--background));
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+}

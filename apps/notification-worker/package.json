@@ -1,0 +1,13 @@
+{
+  "name": "notification-worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'notification-worker is implemented in Phase 2' && exit 0",
+    "build": "echo 'notification-worker is implemented in Phase 2' && exit 0",
+    "lint": "echo 'noop' && exit 0",
+    "typecheck": "echo 'noop' && exit 0",
+    "test": "echo 'noop' && exit 0",
+    "clean": "echo 'noop' && exit 0"
+  }
+}

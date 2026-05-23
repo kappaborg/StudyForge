@@ -1,0 +1,21 @@
+# Production overlay — full HPA, replicated readers, ServiceMonitor on.
+
+replicas:
+  web: 4
+  api: 4
+  aiWorker: 6
+
+autoscaling:
+  api:
+    enabled: true
+    minReplicas: 4
+    maxReplicas: 16
+    targetCPUUtilizationPercentage: 65
+
+resources:
+  aiWorker:
+    requests: { cpu: '1000m', memory: '2Gi' }
+    limits:   { cpu: '4000m', memory: '8Gi' }
+
+serviceMonitor:
+  enabled: true

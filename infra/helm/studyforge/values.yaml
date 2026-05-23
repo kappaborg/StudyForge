@@ -1,0 +1,80 @@
+# Default values. Production overlays must supply image.<svc>.digest explicitly.
+
+image:
+  registry: ghcr.io
+  repository: studyforge
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+  web:
+    name: studyforge-web
+    digest: ''   # `sha256:…`; required in staging + prod
+  api:
+    name: studyforge-api
+    digest: ''
+  aiWorker:
+    name: studyforge-ai-worker
+    digest: ''
+
+replicas:
+  web: 2
+  api: 2
+  aiWorker: 2
+
+resources:
+  web:
+    requests: { cpu: '100m', memory: '256Mi' }
+    limits:   { cpu: '500m', memory: '512Mi' }
+  api:
+    requests: { cpu: '200m', memory: '512Mi' }
+    limits:   { cpu: '1000m', memory: '1Gi' }
+  aiWorker:
+    requests: { cpu: '500m', memory: '1Gi' }
+    limits:   { cpu: '2000m', memory: '4Gi' }
+
+env:
+  NODE_ENV: production
+  LOG_LEVEL: info
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector.observability:4318
+
+# Names of pre-existing Kubernetes Secret objects mounted as env into pods.
+# The chart deliberately does NOT create or template secret values.
+secrets:
+  database: studyforge-database
+  redis: studyforge-redis
+  s3: studyforge-s3
+  jwt: studyforge-jwt
+  kek: studyforge-kek
+  providers: studyforge-providers
+  stripe: studyforge-stripe
+
+ingress:
+  enabled: true
+  className: nginx
+  host: studyforge.ai
+  apiHost: api.studyforge.ai
+  tls:
+    enabled: true
+    secretName: studyforge-tls
+
+# Horizontal Pod Autoscaler — disabled by default; per-env overlays enable it.
+autoscaling:
+  api:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+
+serviceMonitor:
+  enabled: true   # requires the kube-prometheus-stack CRDs
+  interval: 30s
+
+podAnnotations:
+  studyforge.ai/build-from: digest
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  readOnlyRootFilesystem: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ['ALL']

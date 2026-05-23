@@ -1,0 +1,50 @@
+# Tier policy — declarative configuration consumed by `apps/ai-worker/src/cost/tier_policy.py`.
+# One YAML per environment; the CI loader validates that production has no `block` on `free`.
+
+tiers:
+  free:
+    daily_tokens: 200000
+    monthly_tokens: 3000000
+    providers:
+      - groq
+      - gemini_free
+      - openrouter_free
+      - hf_inference
+      - webllm
+    on_exhaust: downshift   # NEVER block on free
+    billing: platform
+
+  pro:
+    daily_tokens: 5000000
+    monthly_tokens: -1   # unlimited
+    providers:
+      - groq
+      - gemini
+      - openrouter
+      - anthropic
+      - openai
+    on_exhaust: rate_limit
+    billing: user
+
+  byok:
+    daily_tokens: -1
+    monthly_tokens: -1
+    providers:
+      - user_byok
+    on_exhaust: rate_limit
+    billing: user
+
+  institutional:
+    daily_tokens: -1
+    monthly_tokens: -1
+    providers:
+      - groq
+      - gemini
+      - openrouter
+      - anthropic
+      - openai
+      - user_byok
+    on_exhaust: rate_limit
+    billing: institution
+
+warn_threshold_pct: 80

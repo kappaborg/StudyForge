@@ -1,0 +1,10 @@
+# Staging overlay — production-shaped, smaller fleet.
+
+replicas:
+  web: 2
+  api: 2
+  aiWorker: 2
+
+ingress:
+  host: staging.studyforge.ai
+  apiHost: staging-api.studyforge.ai

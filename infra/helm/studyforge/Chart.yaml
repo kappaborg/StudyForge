@@ -1,0 +1,14 @@
+apiVersion: v2
+name: studyforge
+description: StudyForge AI platform — web, api, ai-worker, supporting workers.
+type: application
+version: 0.1.0
+appVersion: '0.1.0'
+keywords:
+  - studyforge
+  - rag
+  - llm
+  - education
+maintainers:
+  - name: Platform
+    email: platform@studyforge.ai

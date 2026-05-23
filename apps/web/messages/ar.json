@@ -1,0 +1,34 @@
+{
+  "nav": {
+    "dashboard": "اللوحة",
+    "instructor": "المدرّس",
+    "settings": "الإعدادات",
+    "search": "بحث"
+  },
+  "dashboard": {
+    "title": "اللوحة",
+    "subtitle": "ارفع موادك، اطرح أسئلة، وتابع من حيث توقفت.",
+    "upload": "رفع المواد",
+    "openWorkspace": "فتح مساحة العمل",
+    "askAnything": "اسأل أي شيء عن موادك",
+    "yourMaterials": "موادك"
+  },
+  "budget": {
+    "dailyRequests": "طلبات الذكاء اليومية",
+    "unlimited": "غير محدود (BYOK)",
+    "resets": "إعادة التعيين",
+    "alwaysFree": "مجاني دائمًا",
+    "capReached": "تم الوصول إلى الحد اليومي. أضف مفتاح BYOK من الإعدادات."
+  },
+  "workspace": {
+    "materials": "المواد",
+    "roadmap": "خارطة الطريق",
+    "tutor": "المعلم",
+    "flashcards": "البطاقات",
+    "quizzes": "الاختبارات",
+    "graph": "الرسم البياني",
+    "diagrams": "المخططات",
+    "slides": "الشرائح",
+    "analytics": "التحليلات"
+  }
+}

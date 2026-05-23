@@ -1,0 +1,53 @@
+# dependencies
+node_modules
+.pnpm-store
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# build artifacts
+dist
+build
+.next
+out
+.turbo
+*.tsbuildinfo
+coverage
+
+# env
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# editor / OS
+.DS_Store
+.idea
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+*.swp
+*.swo
+
+# logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# docker volumes (dev)
+.docker-data
+
+# storybook
+storybook-static
+
+# secrets and keys (defense in depth)
+*.pem
+*.key
+*.crt
+secrets/
+
+# Claude Code local config (not portable across users)
+.claude/

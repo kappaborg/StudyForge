@@ -1,0 +1,13 @@
+{
+  "name": "StudyForge",
+  "short_name": "StudyForge",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "description": "AI-powered learning workspace — flashcards, quizzes, roadmaps, and tutor grounded in your materials.",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

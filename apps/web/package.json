@@ -1,0 +1,49 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbo --port 3000",
+    "build": "next build",
+    "start": "next start --port 3000",
+    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install --with-deps chromium",
+    "clean": "rm -rf .next .turbo"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.7.5",
+    "@mlc-ai/web-llm": "^0.2.83",
+    "@studyforge/shared-types": "workspace:*",
+    "@studyforge/ui": "workspace:*",
+    "@studyforge/webllm-client": "workspace:*",
+    "@tanstack/react-query": "^5.59.0",
+    "@xyflow/react": "^12.10.2",
+    "framer-motion": "^11.11.1",
+    "idb": "^8.0.0",
+    "mermaid": "^11.15.0",
+    "next": "15.5.18",
+    "next-intl": "^3.20.0",
+    "posthog-js": "^1.375.0",
+    "react": "19.0.0-rc-65a56d0e-20241020",
+    "react-dom": "19.0.0-rc-65a56d0e-20241020",
+    "react-hook-form": "^7.53.0",
+    "zod": "^3.23.8",
+    "zustand": "^5.0.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^22.7.4",
+    "@types/react": "npm:types-react@19.0.0-rc.1",
+    "@types/react-dom": "npm:types-react-dom@19.0.0-rc.1",
+    "autoprefixer": "^10.4.20",
+    "axe-core": "^4.11.4",
+    "eslint": "^9.12.0",
+    "eslint-config-next": "15.5.18",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2"
+  }
+}

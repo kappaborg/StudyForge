@@ -1,0 +1,34 @@
+{
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "instructor": "Enseignant",
+    "settings": "Paramètres",
+    "search": "Rechercher"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "subtitle": "Déposez des documents, posez des questions, reprenez là où vous étiez.",
+    "upload": "Importer des documents",
+    "openWorkspace": "Ouvrir l'espace de travail",
+    "askAnything": "Posez n'importe quelle question",
+    "yourMaterials": "Vos documents"
+  },
+  "budget": {
+    "dailyRequests": "Requêtes IA quotidiennes",
+    "unlimited": "Illimité (BYOK)",
+    "resets": "Remise à zéro",
+    "alwaysFree": "toujours gratuit",
+    "capReached": "Limite atteinte. Ajoutez une clé BYOK dans Paramètres pour un usage illimité."
+  },
+  "workspace": {
+    "materials": "Documents",
+    "roadmap": "Parcours",
+    "tutor": "Tuteur",
+    "flashcards": "Cartes",
+    "quizzes": "Quiz",
+    "graph": "Graphe",
+    "diagrams": "Diagrammes",
+    "slides": "Diapositives",
+    "analytics": "Analytique"
+  }
+}

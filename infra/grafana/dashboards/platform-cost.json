@@ -1,0 +1,92 @@
+{
+  "title": "StudyForge · Platform Cost",
+  "uid": "studyforge-platform-cost",
+  "schemaVersion": 39,
+  "tags": ["studyforge", "cost"],
+  "timezone": "browser",
+  "refresh": "30s",
+  "time": { "from": "now-24h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "tenant",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(studyforge_usage_event_cost_micro_usd, tenant_id)",
+        "includeAll": true,
+        "multi": true
+      },
+      {
+        "name": "provider",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(studyforge_usage_event_cost_micro_usd, provider_id)",
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Cost per minute (USD) by provider",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (provider_id) (rate(studyforge_usage_event_cost_micro_usd[5m])) / 1e6 * 60",
+          "legendFormat": "{{provider_id}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "currencyUSD" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Token throughput by provider",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "sum by (provider_id) (rate(studyforge_usage_event_tokens_total[5m]))",
+          "legendFormat": "{{provider_id}}"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "ops" } }
+    },
+    {
+      "type": "stat",
+      "title": "% queries served free (incl. cache)",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "100 * (sum(rate(studyforge_router_decision_total{providerId=~\"groq|gemini_free|openrouter_free|hf_inference|webllm|cerebras\"}[1h])) + sum(rate(studyforge_cache_hit_total[1h]))) / sum(rate(studyforge_router_decision_total[1h]))"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent", "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "yellow", "value": 80 }, { "color": "green", "value": 95 } ] } } }
+    },
+    {
+      "type": "stat",
+      "title": "Prompt cache hit rate",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "100 * sum(rate(studyforge_prompt_cache_hit_total[1h])) / sum(rate(studyforge_prompt_cache_check_total[1h]))"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "percent" } }
+    },
+    {
+      "type": "table",
+      "title": "Top 10 tenants by spend (24h)",
+      "datasource": "Prometheus",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 6 },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (tenant_id) (increase(studyforge_usage_event_cost_micro_usd[24h]))) / 1e6"
+        }
+      ]
+    }
+  ]
+}

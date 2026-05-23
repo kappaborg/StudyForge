@@ -1,0 +1,9 @@
+# Golden set for tutor.answer.v1. Each line is one GoldenCase.
+# Authoring discipline: every cited case lists the chunk_ids the agent is
+# expected to cite, plus a model_response that already contains those tags.
+# That keeps the eval deterministic — no LLM call required.
+{"case_id":"cite-1-uav-sensors","query":"Which sensors does the UAV detection system combine?","chunks":[{"chunk_id":"c-sensors","content":"The system combines RGB optical, thermal infrared, and acoustic sensors for robust UAV detection across illumination conditions.","page":2}],"expected_chunks":["c-sensors"],"model_response":"It combines RGB, thermal, and acoustic sensors [chunk:c-sensors]."}
+{"case_id":"cite-2-late-fusion","query":"What is late-fusion?","chunks":[{"chunk_id":"c-late","content":"Late-fusion combines independent per-sensor decisions through a decision-level mechanism rather than concatenating raw features.","page":3}],"expected_chunks":["c-late"],"model_response":"Late-fusion combines per-sensor decisions at the decision level [chunk:c-late]."}
+{"case_id":"cite-3-data-cleaning","query":"How is data cleaning done in the pipeline?","chunks":[{"chunk_id":"c-clean","content":"Frames inherit filename metadata from the parent video; misclassified frames are removed via a bit-flipper review pass.","page":6}],"expected_chunks":["c-clean"],"model_response":"Frames inherit metadata from the parent video; bad ones are removed via a bit-flipper review [chunk:c-clean]."}
+{"case_id":"refusal-1-no-chunks","query":"What is the capital of France?","chunks":[],"expect_refusal":true,"model_response":"I could not find this in your materials."}
+{"case_id":"refusal-2-off-topic","query":"What is the meaning of life?","chunks":[{"chunk_id":"c-off","content":"This passage discusses UAV detection benchmarks under adverse weather.","page":4}],"expect_refusal":true,"model_response":"I could not find this in your materials."}

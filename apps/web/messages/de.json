@@ -1,0 +1,34 @@
+{
+  "nav": {
+    "dashboard": "Übersicht",
+    "instructor": "Dozent",
+    "settings": "Einstellungen",
+    "search": "Suchen"
+  },
+  "dashboard": {
+    "title": "Übersicht",
+    "subtitle": "Materialien hochladen, Fragen stellen und weitermachen.",
+    "upload": "Materialien hochladen",
+    "openWorkspace": "Arbeitsbereich öffnen",
+    "askAnything": "Frage etwas über deine Materialien",
+    "yourMaterials": "Deine Materialien"
+  },
+  "budget": {
+    "dailyRequests": "Tägliche KI-Anfragen",
+    "unlimited": "Unbegrenzt (BYOK)",
+    "resets": "Zurücksetzen",
+    "alwaysFree": "immer kostenlos",
+    "capReached": "Tageslimit erreicht. Füge in den Einstellungen einen BYOK-Schlüssel hinzu."
+  },
+  "workspace": {
+    "materials": "Materialien",
+    "roadmap": "Plan",
+    "tutor": "Tutor",
+    "flashcards": "Karteikarten",
+    "quizzes": "Quiz",
+    "graph": "Graph",
+    "diagrams": "Diagramme",
+    "slides": "Folien",
+    "analytics": "Analytik"
+  }
+}

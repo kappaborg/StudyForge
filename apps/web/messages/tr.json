@@ -1,0 +1,34 @@
+{
+  "nav": {
+    "dashboard": "Panel",
+    "instructor": "Eğitmen",
+    "settings": "Ayarlar",
+    "search": "Ara"
+  },
+  "dashboard": {
+    "title": "Panel",
+    "subtitle": "Materyal yükle, soru sor ve kaldığın yerden devam et.",
+    "upload": "Materyal yükle",
+    "openWorkspace": "Çalışma alanını aç",
+    "askAnything": "Materyallerin hakkında bir şey sor",
+    "yourMaterials": "Materyallerin"
+  },
+  "budget": {
+    "dailyRequests": "Günlük AI isteği",
+    "unlimited": "Sınırsız (BYOK)",
+    "resets": "Sıfırlanma",
+    "alwaysFree": "her zaman ücretsiz",
+    "capReached": "Günlük sınıra ulaşıldı. Ayarlardan BYOK anahtarı ekleyin."
+  },
+  "workspace": {
+    "materials": "Materyaller",
+    "roadmap": "Yol haritası",
+    "tutor": "Eğitmen",
+    "flashcards": "Bilgi kartları",
+    "quizzes": "Sınavlar",
+    "graph": "Grafik",
+    "diagrams": "Şemalar",
+    "slides": "Slaytlar",
+    "analytics": "Analitik"
+  }
+}

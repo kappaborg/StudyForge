@@ -1,0 +1,128 @@
+# PrometheusRule manifest — load into kube-prometheus-stack.
+# See docs/architecture/11-devops-delivery.md for the SLO rationale.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: studyforge-platform
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: studyforge.cost
+      interval: 1m
+      rules:
+        - alert: TokenSpendBurst
+          expr: |
+            sum by (tenant_id) (
+              rate(studyforge_usage_event_cost_micro_usd[15m])
+            )
+            >
+            3 * sum by (tenant_id) (
+              avg_over_time(rate(studyforge_usage_event_cost_micro_usd[15m])[7d:15m])
+            )
+          for: 15m
+          labels:
+            severity: page
+            team: platform
+          annotations:
+            summary: "Tenant {{`{{ $labels.tenant_id }}`}} burning tokens 3× the 7-day median"
+            runbook: docs/runbooks/cost-burst.md
+
+        - alert: FreeProviderQuotaExhausted
+          expr: |
+            min by (provider_id) (studyforge_provider_quota_tokens_remaining) == 0
+          for: 5m
+          labels:
+            severity: ticket
+            team: ai
+          annotations:
+            summary: "Provider {{`{{ $labels.provider_id }}`}} has zero tokens remaining in the current window"
+
+    - name: studyforge.quality
+      interval: 5m
+      rules:
+        - alert: RagFaithfulnessDrop
+          expr: avg_over_time(studyforge_ragas_faithfulness[7d]) < 0.85
+          for: 1h
+          labels:
+            severity: ticket
+            team: ai
+          annotations:
+            summary: "Ragas faithfulness 7-day rolling avg < 0.85"
+            runbook: docs/runbooks/rag-quality-regression.md
+
+        - alert: TutorRefusalRateHigh
+          expr: |
+            sum(rate(studyforge_tutor_refusal_total[1h]))
+              / sum(rate(studyforge_tutor_messages_total[1h])) > 0.25
+          for: 30m
+          labels:
+            severity: ticket
+            team: ai
+          annotations:
+            summary: "Tutor refusal rate > 25% over the last hour"
+
+    - name: studyforge.workers
+      interval: 30s
+      rules:
+        - alert: QueueBacklog
+          expr: max by (queue) (studyforge_bullmq_queue_depth) > 5000
+          for: 10m
+          labels:
+            severity: page
+            team: platform
+          annotations:
+            summary: "Queue {{`{{ $labels.queue }}`}} backlog > 5 000 for 10 min"
+
+        - alert: SandboxFailRate
+          expr: |
+            sum(rate(studyforge_sandbox_invocations_total{outcome="failed"}[1h]))
+              / sum(rate(studyforge_sandbox_invocations_total[1h])) > 0.05
+          for: 15m
+          labels:
+            severity: page
+            team: security
+          annotations:
+            summary: "Sandbox failure rate > 5% — investigate supply chain / escape attempts"
+
+    - name: studyforge.web
+      interval: 1m
+      rules:
+        - alert: CoreWebVitalsLcp
+          expr: histogram_quantile(0.75, sum(rate(studyforge_web_lcp_seconds_bucket[15m])) by (le)) > 2.5
+          for: 30m
+          labels:
+            severity: ticket
+            team: web
+          annotations:
+            summary: "LCP p75 > 2.5 s for 30 min"
+
+        - alert: CoreWebVitalsInp
+          expr: histogram_quantile(0.75, sum(rate(studyforge_web_inp_ms_bucket[15m])) by (le)) > 200
+          for: 30m
+          labels:
+            severity: ticket
+            team: web
+          annotations:
+            summary: "INP p75 > 200 ms for 30 min"
+
+    - name: studyforge.compliance
+      interval: 5m
+      rules:
+        - alert: DsarOverdue
+          expr: max(studyforge_dsar_oldest_open_seconds) > 24 * 3600
+          for: 0m
+          labels:
+            severity: page
+            team: compliance
+          annotations:
+            summary: "A DSAR is approaching the 24h GDPR deadline"
+
+        - alert: AuditChainBroken
+          expr: studyforge_audit_chain_verify_first_bad_id > 0
+          for: 0m
+          labels:
+            severity: page
+            team: security
+          annotations:
+            summary: "audit_log_verify() found a broken row — chain tampering suspected"

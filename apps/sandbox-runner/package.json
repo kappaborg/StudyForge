@@ -1,0 +1,13 @@
+{
+  "name": "sandbox-runner",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'sandbox-runner is implemented in Phase 5' && exit 0",
+    "build": "echo 'sandbox-runner is implemented in Phase 5' && exit 0",
+    "lint": "echo 'noop' && exit 0",
+    "typecheck": "echo 'noop' && exit 0",
+    "test": "echo 'noop' && exit 0",
+    "clean": "echo 'noop' && exit 0"
+  }
+}
