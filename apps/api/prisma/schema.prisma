@@ -8,7 +8,14 @@ generator client {
 
 datasource db {
   provider   = "postgresql"
+  // Pooled connection (PgBouncer-fronted) used by the running app. With
+  // Neon and Supabase this URL ends in ``&pgbouncer=true``.
   url        = env("DATABASE_URL")
+  // Direct (non-pooled) connection used by ``prisma migrate``. Prepared
+  // statements don't survive PgBouncer transaction-mode pooling, so the
+  // migration runner needs an unpooled channel. Falls back to DATABASE_URL
+  // when DIRECT_URL is unset (single-host local Postgres).
+  directUrl  = env("DIRECT_URL")
   extensions = [pgcrypto, vector, pg_trgm, citext]
 }
 

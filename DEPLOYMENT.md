@@ -40,21 +40,41 @@ If `git push` prompts for credentials, use a [GitHub Personal Access Token](http
 
 ## Step 1 — Neon (Postgres + pgvector)
 
-1. Go to [neon.tech](https://neon.tech) → sign up → **New Project**.
+1. Go to [neon.tech](https://neon.tech) → sign up (the "Continue with GitHub" button is fastest) → **New Project**.
 2. Region: pick `aws-us-east-2` or `aws-eu-central-1` — match wherever Render is closest.
-3. After it provisions, click **Connection Details**:
-   - **Pooled connection** string — this is your `DATABASE_URL`. Copy it.
-4. Inside the project → **SQL Editor** → run:
+3. After it provisions, click **Connect** (top right of the dashboard). The "Connect to your database" modal opens with two important controls:
+
+   **a. Copy the pooled URL → this is `DATABASE_URL`**
+   - Make sure **Connection pooling** is ON (green toggle).
+   - Click **Show password**, then **Copy snippet**.
+   - **Append `&pgbouncer=true`** to the very end of the URL.
+   - Final shape:
+     ```
+     postgresql://neondb_owner:PASSWORD@ep-XYZ-pooler.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require&pgbouncer=true
+     ```
+
+   **b. Copy the direct URL → this is `DIRECT_URL`**
+   - Toggle **Connection pooling** OFF (grey).
+   - Click **Show password**, then **Copy snippet** again.
+   - The hostname no longer contains `-pooler`.
+   - Do NOT append `pgbouncer=true` to this one.
+   - Final shape:
+     ```
+     postgresql://neondb_owner:PASSWORD@ep-XYZ.REGION.aws.neon.tech/neondb?sslmode=require&channel_binding=require
+     ```
+
+   Both URLs share the same password. Save them both.
+
+4. Inside the project → **SQL Editor** → paste and run:
 
    ```sql
    CREATE EXTENSION IF NOT EXISTS vector;
    CREATE EXTENSION IF NOT EXISTS citext;
    ```
 
-5. Save these somewhere you can paste from:
-   - `DATABASE_URL` = the pooled connection string (ends in `?sslmode=require`)
+   You should see two `CREATE EXTENSION` rows. **Skipping this causes the Step 7 migration to fail.**
 
-You'll run `prisma migrate deploy` against this in Step 7.
+You'll run `prisma migrate deploy` against `DIRECT_URL` in Step 7.
 
 ---
 
@@ -140,7 +160,8 @@ Save:
    - **Docker Context Directory**: `.` *(repo root)*
    - **Instance Type**: **Free**
 4. **Environment Variables** — add every var from `apps/api/.env.production.example`:
-   - `DATABASE_URL` from Step 1 (pooled connection)
+   - `DATABASE_URL` from Step 1 (POOLED URL **with `&pgbouncer=true` appended**)
+   - `DIRECT_URL` from Step 1 (the non-pooled URL — Render itself doesn't use it, but tomorrow's `prisma migrate` from Render's Shell would)
    - `REDIS_URL` from Step 2
    - `S3_ENDPOINT`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_BUCKET`, `S3_REGION`, `S3_PUBLIC_URL` from Step 3
    - `RESEND_API_KEY`, `EMAIL_FROM` from Step 4
@@ -181,21 +202,30 @@ Save:
 
 ## Step 7 — run Prisma migrations against Neon
 
-From your laptop, with the `DATABASE_URL` from Step 1 in your environment:
+From your laptop, with **both** URLs from Step 1 exported:
 
 ```bash
 cd "/Users/kappasutra/Desktop/Student Helper/apps/api"
-DATABASE_URL="<paste pooled URL from Neon>" \
+DATABASE_URL="<paste POOLED URL with &pgbouncer=true>" \
+DIRECT_URL="<paste DIRECT URL>" \
   pnpm exec prisma migrate deploy
 ```
 
-Verify the migration ran by visiting Neon → SQL Editor:
+Why both: `prisma migrate` opens a direct (unpooled) channel via `DIRECT_URL`. The running app uses `DATABASE_URL` through the PgBouncer pooler. Mixing them up causes either `prepared statement "s0" already exists` (under load) or `permission denied for prepared statement` (during migrate).
 
-```sql
-SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY 1;
+Expected output:
+```
+Applied N migrations
 ```
 
-You should see `User`, `Tenant`, `Document`, `Chunk`, etc.
+Verify by visiting Neon → SQL Editor:
+
+```sql
+SELECT table_name FROM information_schema.tables
+WHERE table_schema = 'public' ORDER BY 1;
+```
+
+You should see ~30 tables including `User`, `Tenant`, `Document`, `Chunk`, `Folder`, `Session`.
 
 ---
 
@@ -265,7 +295,9 @@ Database schema changes:
 
 ```bash
 cd apps/api
-DATABASE_URL="<your-neon-pooled-url>" pnpm exec prisma migrate deploy
+DATABASE_URL="<pooled URL with &pgbouncer=true>" \
+DIRECT_URL="<direct URL>" \
+  pnpm exec prisma migrate deploy
 ```
 
 Run this whenever a new migration is added before the new code goes live.
