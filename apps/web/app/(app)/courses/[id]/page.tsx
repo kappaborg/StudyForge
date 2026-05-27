@@ -2,23 +2,27 @@ import Link from 'next/link';
 import { DocumentsList } from '../../../../components/documents-list';
 
 export default async function MaterialsTab({
-  params,
+  params: _params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  // The id is reserved for future workspace-scoped filtering; today the
+  // documents list returns the tenant view and the workspace tab acts as
+  // a sectioned entry point. Left underscored so the lint rule passes.
+  await _params;
   return (
     <section className="space-y-6">
       <header className="space-y-1">
         <h1 className="text-xl font-semibold tracking-tight">Materials</h1>
         <p className="text-sm text-muted-foreground">
-          Documents indexed under workspace <code className="rounded bg-muted px-1 text-xs">{id}</code>.
+          Everything you've uploaded, with the folder it lives in. Click a row
+          to jump to that folder.
         </p>
       </header>
 
       <DocumentsList
         limit={50}
-        emptyHint="No materials yet. Drop a PDF on the Upload page; it lands here automatically."
+        emptyHint="No materials yet. Drop a file on the Materials page; it lands here automatically."
       />
 
       <Link

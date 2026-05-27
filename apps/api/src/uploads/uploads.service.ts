@@ -3,6 +3,11 @@ import {
   S3Client,
   HeadObjectCommand,
   PutObjectCommand,
+  CreateMultipartUploadCommand,
+  UploadPartCommand,
+  CompleteMultipartUploadCommand,
+  AbortMultipartUploadCommand,
+  type CompletedPart,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'node:crypto';
@@ -46,6 +51,20 @@ export class UploadsService {
     });
   }
 
+  /**
+   * Two-shape init:
+   *
+   *   • Single-shot (default): returns ``{signedUrl}``. Caller PUTs the
+   *     whole file in one request. Right for ≤ 5 MB.
+   *   • Multipart (``dto.multipart === true``): returns ``{parts: [{
+   *     partNumber, signedUrl }]}``. Caller PUTs each chunk to its
+   *     pre-signed URL in parallel, collects the ETag header from each
+   *     response, and passes them back to ``complete``. S3 reassembles.
+   *
+   * Multipart is the reliable-upload path: a dropped TCP connection
+   * during one chunk only forces that chunk to be retried, not the
+   * entire 200 MB file.
+   */
   async init(
     tenantId: string,
     userId: string,
@@ -53,8 +72,10 @@ export class UploadsService {
     dto: UploadInitDto,
   ): Promise<{
     uploadId: string;
-    signedUrl: string;
-    publicUrl: string;
+    multipart: boolean;
+    signedUrl?: string;
+    parts?: Array<{ partNumber: number; signedUrl: string }>;
+    publicUrl?: string;
     expiresAt: string;
     s3Key: string;
   }> {
@@ -68,14 +89,81 @@ export class UploadsService {
       });
     }
 
-    // Ensure tenant + user exist (dev-mode auto-provision; OAuth signup
-    // replaces this in Phase 1 mid).
     await this.ensureTenant(tenantId);
     await this.ensureUser(tenantId, userId, email);
 
     const uploadId = randomUUID();
     const s3Key = `tenants/${tenantId}/uploads/${uploadId}/${dto.filename}`;
+    const folderId = await this.folders.resolveOrInbox(tenantId, dto.folderId);
 
+    if (dto.multipart) {
+      // S3 requires every part except the last to be ≥ 5 MB. Use 5 MB as
+      // the part target; the last part can be anything < 5 MB.
+      const PART_BYTES = 5 * 1024 * 1024;
+      const partCount = Math.min(10_000, Math.max(1, Math.ceil(dto.sizeBytes / PART_BYTES)));
+
+      const created = await this.s3.send(
+        new CreateMultipartUploadCommand({
+          Bucket: this.bucket,
+          Key: s3Key,
+          ContentType: dto.mime,
+        }),
+      );
+      const s3UploadId = created.UploadId;
+      if (!s3UploadId) {
+        throw new ProblemException({
+          status: 502,
+          code: 'upload.multipart-init-failed',
+          title: 'S3 did not return an UploadId',
+        });
+      }
+
+      // Pre-sign every UploadPart URL up front. Each URL is independent
+      // and valid for the same 15-minute window as the single-shot path.
+      const parts: Array<{ partNumber: number; signedUrl: string }> = [];
+      for (let i = 1; i <= partCount; i++) {
+        const cmd = new UploadPartCommand({
+          Bucket: this.bucket,
+          Key: s3Key,
+          PartNumber: i,
+          UploadId: s3UploadId,
+        });
+        const url = await getSignedUrl(this.s3, cmd, { expiresIn: 15 * 60 });
+        parts.push({ partNumber: i, signedUrl: this.toPublicUrl(url) });
+      }
+
+      await this.prisma.uploadBatch.create({
+        data: {
+          id: uploadId,
+          tenantId,
+          userId,
+          courseId: dto.courseId ?? null,
+          folderId,
+          state: 'initiated',
+          bundleSha256: dto.sha256,
+          sizeBytes: BigInt(dto.sizeBytes),
+          s3Key,
+          mime: dto.mime,
+          safetyFlags: [],
+          s3MultipartUploadId: s3UploadId,
+          partCount,
+        },
+      });
+
+      this.log.log(
+        `upload.init.multipart tenant=${tenantId} user=${userId} upload=${uploadId} size=${dto.sizeBytes} parts=${partCount}`,
+      );
+
+      return {
+        uploadId,
+        multipart: true,
+        parts,
+        expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+        s3Key,
+      };
+    }
+
+    // Single-shot path (legacy, used for files < 5 MB).
     const command = new PutObjectCommand({
       Bucket: this.bucket,
       Key: s3Key,
@@ -83,15 +171,7 @@ export class UploadsService {
       ContentLength: dto.sizeBytes,
     });
     const signedUrl = await getSignedUrl(this.s3, command, { expiresIn: 15 * 60 });
-
-    // Rewrite the host so the browser uploads against the externally-reachable
-    // MinIO console URL (the API sees the internal hostname when running in
-    // docker compose, the browser sees ``localhost``).
     const publicUrl = this.toPublicUrl(signedUrl);
-
-    // Resolve folderId now so the ``complete`` handler can write
-    // Document.folderId without another roundtrip. Unspecified → Inbox.
-    const folderId = await this.folders.resolveOrInbox(tenantId, dto.folderId);
 
     await this.prisma.uploadBatch.create({
       data: {
@@ -115,6 +195,7 @@ export class UploadsService {
 
     return {
       uploadId,
+      multipart: false,
       signedUrl: publicUrl,
       publicUrl,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
@@ -126,6 +207,7 @@ export class UploadsService {
     tenantId: string,
     userId: string,
     uploadId: string,
+    opts: { parts?: Array<{ partNumber: number; etag: string }> } = {},
   ): Promise<{
     uploadId: string;
     state: string;
@@ -150,7 +232,61 @@ export class UploadsService {
       });
     }
 
-    // Confirm the object actually landed in S3.
+    // Multipart upload: finalize via CompleteMultipartUpload before we
+    // can HEAD the object — the object doesn't exist as a single key
+    // until S3 stitches the parts together.
+    if (batch.s3MultipartUploadId) {
+      if (!opts.parts || opts.parts.length === 0) {
+        throw new ProblemException({
+          status: 400,
+          code: 'upload.multipart-parts-missing',
+          title: 'Multipart upload requires the parts array on complete',
+          detail:
+            'Each successful UploadPart response returned an ETag; pass them back as { parts: [{ partNumber, etag }, …] }.',
+        });
+      }
+      const completed: CompletedPart[] = opts.parts
+        .slice()
+        .sort((a, b) => a.partNumber - b.partNumber)
+        .map((p) => ({ PartNumber: p.partNumber, ETag: p.etag }));
+      try {
+        await this.s3.send(
+          new CompleteMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: batch.s3Key,
+            UploadId: batch.s3MultipartUploadId,
+            MultipartUpload: { Parts: completed },
+          }),
+        );
+      } catch (err) {
+        // Abandon the multipart upload to free server-side state — S3
+        // charges for incomplete uploads if left around.
+        await this.s3
+          .send(
+            new AbortMultipartUploadCommand({
+              Bucket: this.bucket,
+              Key: batch.s3Key,
+              UploadId: batch.s3MultipartUploadId,
+            }),
+          )
+          .catch(() => undefined);
+        await this.prisma.uploadBatch.update({
+          where: { id: uploadId },
+          data: {
+            state: 'failed',
+            errorReason: err instanceof Error ? err.message.slice(0, 500) : 'multipart-complete-failed',
+          },
+        });
+        throw new ProblemException({
+          status: 502,
+          code: 'upload.multipart-complete-failed',
+          title: 'S3 rejected the multipart completion',
+          detail: err instanceof Error ? err.message : 'unknown',
+        });
+      }
+    }
+
+    // Confirm the object actually landed in S3 (multipart or single-shot).
     try {
       await this.s3.send(
         new HeadObjectCommand({ Bucket: this.bucket, Key: batch.s3Key }),
@@ -230,6 +366,274 @@ export class UploadsService {
       state: 'ready',
       documentId: ingestResult.documentId,
       chunkCount: ingestResult.chunkCount,
+    };
+  }
+
+  /**
+   * URL-based ingest (YouTube today; podcast / website later). Skips the
+   * S3 round-trip entirely — the worker fetches the captions and writes
+   * a Document with a synthetic ``s3Key`` like ``youtube://abc123``. We
+   * still create an ``UploadBatch`` so the rest of the system (stale
+   * markers on local models, notifications, indexing) treats this the
+   * same way as a file upload.
+   */
+  async ingestYoutube(
+    tenantId: string,
+    userId: string,
+    email: string,
+    dto: { url: string; folderId?: string | null },
+  ): Promise<{ uploadId: string; state: string; documentId: string; chunkCount: number; title: string }> {
+    await this.ensureTenant(tenantId);
+    await this.ensureUser(tenantId, userId, email);
+
+    const uploadId = randomUUID();
+    const folderId = await this.folders.resolveOrInbox(tenantId, dto.folderId ?? undefined);
+
+    // Synthetic batch: state goes straight to "uploaded" because we never
+    // hit S3. The worker call below flips it to "ready" on success or
+    // "failed" if the captions endpoint refuses.
+    await this.prisma.uploadBatch.create({
+      data: {
+        id: uploadId,
+        tenantId,
+        userId,
+        courseId: null,
+        folderId,
+        state: 'uploaded',
+        bundleSha256: `youtube:${dto.url}`,
+        sizeBytes: BigInt(0),
+        s3Key: `youtube://pending/${uploadId}`,
+        mime: 'text/plain',
+        safetyFlags: [],
+      },
+    });
+
+    let workerJson: {
+      document_id: string;
+      document_version_id: string;
+      chunk_count: number;
+      embedded_chunks: number;
+      title: string;
+      transcript_chars: number;
+    };
+    try {
+      const res = await fetch(`${this.aiWorkerUrl}/v1/ingest/url`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          user_id: userId,
+          course_id: null,
+          folder_id: folderId,
+          upload_batch_id: uploadId,
+          url: dto.url,
+          source: 'youtube',
+        }),
+      });
+      if (!res.ok) {
+        let detail: string;
+        try {
+          const body = (await res.json()) as { detail?: string };
+          detail = body.detail ?? `worker returned ${res.status}`;
+        } catch {
+          detail = (await res.text()).slice(0, 400);
+        }
+        await this.prisma.uploadBatch.update({
+          where: { id: uploadId },
+          data: { state: 'failed', errorReason: detail.slice(0, 500) },
+        });
+        throw new ProblemException({
+          status: res.status === 400 || res.status === 404 ? res.status : 502,
+          code: 'ingest.youtube-failed',
+          title: 'YouTube ingest failed',
+          detail,
+        });
+      }
+      workerJson = (await res.json()) as typeof workerJson;
+    } catch (err) {
+      if (err instanceof ProblemException) throw err;
+      const detail = err instanceof Error ? err.message : 'unknown';
+      await this.prisma.uploadBatch.update({
+        where: { id: uploadId },
+        data: { state: 'failed', errorReason: detail.slice(0, 500) },
+      }).catch(() => undefined);
+      throw new ProblemException({
+        status: 502,
+        code: 'ingest.youtube-network',
+        title: 'Could not reach the worker',
+        detail,
+      });
+    }
+
+    await this.prisma.uploadBatch.update({
+      where: { id: uploadId },
+      data: { state: 'ready', completedAt: new Date() },
+    });
+
+    if (folderId) {
+      void this.localModels
+        .markFolderStale(tenantId, folderId)
+        .catch((err) => this.log.warn(`local-model stale mark failed: ${err}`));
+    }
+    void this.search
+      .indexDocument(workerJson.document_id)
+      .catch((err) => this.log.warn(`search index failed: ${err}`));
+    void this.notifications
+      .enqueue({
+        tenantId,
+        userId,
+        kind: 'upload_ready',
+        channels: ['in_app'],
+        subject: `${workerJson.title} is ready to study`,
+        body: `Indexed ${workerJson.chunk_count} chunk${workerJson.chunk_count === 1 ? '' : 's'} from a YouTube transcript.`,
+        meta: {
+          uploadId,
+          documentId: workerJson.document_id,
+          chunkCount: workerJson.chunk_count,
+          source: 'youtube',
+        },
+      })
+      .catch((err) => this.log.warn(`youtube-ready notification failed: ${err}`));
+
+    return {
+      uploadId,
+      state: 'ready',
+      documentId: workerJson.document_id,
+      chunkCount: workerJson.chunk_count,
+      title: workerJson.title,
+    };
+  }
+
+  /**
+   * Plain-text ingest. The browser extension uses this to capture page
+   * content (readable text from a webpage, a copied selection, etc.)
+   * without uploading anything to S3. Architecturally identical to the
+   * YouTube path: synthetic UploadBatch, plaintext bytes go through the
+   * normal ingest pipeline, downstream stale-marking and notifications
+   * fire as usual.
+   */
+  async ingestText(
+    tenantId: string,
+    userId: string,
+    email: string,
+    dto: { folderId?: string | null; title: string; text: string; sourceUrl?: string | null },
+  ): Promise<{ uploadId: string; state: string; documentId: string; chunkCount: number; title: string }> {
+    await this.ensureTenant(tenantId);
+    await this.ensureUser(tenantId, userId, email);
+
+    const uploadId = randomUUID();
+    const folderId = await this.folders.resolveOrInbox(tenantId, dto.folderId ?? undefined);
+
+    await this.prisma.uploadBatch.create({
+      data: {
+        id: uploadId,
+        tenantId,
+        userId,
+        courseId: null,
+        folderId,
+        state: 'uploaded',
+        bundleSha256: `text:${uploadId}`,
+        sizeBytes: BigInt(dto.text.length),
+        s3Key: dto.sourceUrl ?? `text://pending/${uploadId}`,
+        mime: 'text/plain',
+        safetyFlags: [],
+      },
+    });
+
+    let workerJson: {
+      document_id: string;
+      document_version_id: string;
+      chunk_count: number;
+      embedded_chunks: number;
+      title: string;
+      text_chars: number;
+    };
+    try {
+      const res = await fetch(`${this.aiWorkerUrl}/v1/ingest/text`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          tenant_id: tenantId,
+          user_id: userId,
+          course_id: null,
+          folder_id: folderId,
+          upload_batch_id: uploadId,
+          title: dto.title.slice(0, 400),
+          text: dto.text,
+          source_url: dto.sourceUrl ?? null,
+        }),
+      });
+      if (!res.ok) {
+        let detail: string;
+        try {
+          const body = (await res.json()) as { detail?: string };
+          detail = body.detail ?? `worker returned ${res.status}`;
+        } catch {
+          detail = (await res.text()).slice(0, 400);
+        }
+        await this.prisma.uploadBatch.update({
+          where: { id: uploadId },
+          data: { state: 'failed', errorReason: detail.slice(0, 500) },
+        });
+        throw new ProblemException({
+          status: res.status === 400 ? 400 : 502,
+          code: 'ingest.text-failed',
+          title: 'Text ingest failed',
+          detail,
+        });
+      }
+      workerJson = (await res.json()) as typeof workerJson;
+    } catch (err) {
+      if (err instanceof ProblemException) throw err;
+      const detail = err instanceof Error ? err.message : 'unknown';
+      await this.prisma.uploadBatch
+        .update({ where: { id: uploadId }, data: { state: 'failed', errorReason: detail.slice(0, 500) } })
+        .catch(() => undefined);
+      throw new ProblemException({
+        status: 502,
+        code: 'ingest.text-network',
+        title: 'Could not reach the worker',
+        detail,
+      });
+    }
+
+    await this.prisma.uploadBatch.update({
+      where: { id: uploadId },
+      data: { state: 'ready', completedAt: new Date() },
+    });
+
+    if (folderId) {
+      void this.localModels
+        .markFolderStale(tenantId, folderId)
+        .catch((err) => this.log.warn(`local-model stale mark failed: ${err}`));
+    }
+    void this.search
+      .indexDocument(workerJson.document_id)
+      .catch((err) => this.log.warn(`search index failed: ${err}`));
+    void this.notifications
+      .enqueue({
+        tenantId,
+        userId,
+        kind: 'upload_ready',
+        channels: ['in_app'],
+        subject: `${workerJson.title} is ready to study`,
+        body: `Indexed ${workerJson.chunk_count} chunk${workerJson.chunk_count === 1 ? '' : 's'} from a captured webpage.`,
+        meta: {
+          uploadId,
+          documentId: workerJson.document_id,
+          chunkCount: workerJson.chunk_count,
+          source: 'text',
+          sourceUrl: dto.sourceUrl ?? null,
+        },
+      })
+      .catch((err) => this.log.warn(`text-ready notification failed: ${err}`));
+
+    return {
+      uploadId,
+      state: 'ready',
+      documentId: workerJson.document_id,
+      chunkCount: workerJson.chunk_count,
+      title: workerJson.title,
     };
   }
 

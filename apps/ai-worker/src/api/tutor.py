@@ -23,7 +23,7 @@ from ..rag.contracts import RetrievedChunk as RagChunk
 from ..rag.factory import is_stub_embedder
 from ..rag.retriever import Embedder, Retriever
 from ..rag.postgres import build_postgres_backends
-from ..rag.reranker import IdentityReranker
+from ..rag.factory import build_reranker
 from ._chunk_trim import trim_chunk_content
 
 
@@ -46,6 +46,7 @@ class TutorAskRequest(BaseModel):
     course_id: str | None = None
     folder_id: str | None = None
     chapters: list[int] | None = None
+    allowed_folder_ids: list[str] | None = None
     query: str = Field(min_length=1, max_length=8000)
     top_k: int = Field(default=5, ge=1, le=20)
 
@@ -85,7 +86,7 @@ def build_router(*, dsn: str, pool: AsyncConnectionPool, tutor_agent: TutorAgent
         embedder=embedder,
         dense=dense_path,
         sparse=sparse,
-        reranker=IdentityReranker(),
+        reranker=build_reranker(),
         resolver=resolver,
     )
 
@@ -98,6 +99,7 @@ def build_router(*, dsn: str, pool: AsyncConnectionPool, tutor_agent: TutorAgent
                     course_id=req.course_id,
                     folder_id=req.folder_id,
                     chapters=req.chapters,
+                    allowed_folder_ids=req.allowed_folder_ids,
                     query=req.query,
                     k=req.top_k,
                 )

@@ -98,3 +98,55 @@ export function chapterUnion(scope: ExamScopeRow): number[] {
   for (const s of scope.scopes) for (const c of s.chapters) set.add(c);
   return Array.from(set).sort((a, b) => a - b);
 }
+
+// ── Sharing (study-group fork) ──────────────────────────────────────────────
+
+export interface ScopeShareLink {
+  token: string;
+  createdAt: string;
+}
+
+export interface ScopePreview {
+  title: string;
+  scopes: ScopeEntry[];
+  examDate: string | null;
+  sourceFolderName: string;
+  sharedBy: string;
+}
+
+export async function getScopeShareLink(scopeId: string): Promise<ScopeShareLink | null> {
+  return apiGet<ScopeShareLink | null>(`/v1/exam-scopes/${scopeId}/share`);
+}
+
+export async function createScopeShareLink(
+  scopeId: string,
+  opts: { rotate?: boolean } = {},
+): Promise<ScopeShareLink> {
+  return apiPost<ScopeShareLink>(`/v1/exam-scopes/${scopeId}/share`, opts);
+}
+
+export async function revokeScopeShareLink(scopeId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/v1/exam-scopes/${scopeId}/share`, {
+    method: 'DELETE',
+    headers: {
+      'x-tenant-id': '11111111-1111-1111-1111-111111111111',
+      'x-user-id': '22222222-2222-2222-2222-222222222222',
+      'x-user-email': 'dev@studyforge.local',
+    },
+    credentials: 'include',
+  });
+  if (!res.ok && res.status !== 204) {
+    throw new ApiError({ status: res.status, title: 'Revoke failed' });
+  }
+}
+
+export async function previewSharedScope(token: string): Promise<ScopePreview> {
+  return apiGet<ScopePreview>(`/v1/shared/scopes/preview/${encodeURIComponent(token)}`);
+}
+
+export async function acceptSharedScope(
+  token: string,
+  folderId: string,
+): Promise<ExamScopeRow> {
+  return apiPost<ExamScopeRow>('/v1/shared/scopes/accept', { token, folderId });
+}

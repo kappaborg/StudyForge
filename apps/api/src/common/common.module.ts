@@ -1,5 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { APP_FILTER, APP_INTERCEPTOR, Reflector } from '@nestjs/core';
+import { CoursesService } from './courses.service';
 import {
   IdempotencyInterceptor,
   InMemoryIdempotencyStore,
@@ -16,6 +17,7 @@ import { ProblemFilter } from './problem.filter';
   providers: [
     { provide: APP_FILTER, useClass: ProblemFilter },
     InMemoryIdempotencyStore,
+    CoursesService,
     {
       provide: APP_INTERCEPTOR,
       useFactory: (reflector: Reflector, store: InMemoryIdempotencyStore) =>
@@ -23,6 +25,6 @@ import { ProblemFilter } from './problem.filter';
       inject: [Reflector, InMemoryIdempotencyStore],
     },
   ],
-  exports: [InMemoryIdempotencyStore],
+  exports: [InMemoryIdempotencyStore, CoursesService],
 })
 export class CommonModule {}

@@ -2,11 +2,13 @@
 
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
+import { relativeTime } from '../lib/format-document';
 import {
   deleteLocalModel,
   listLocalModels,
   type LocalModelRow,
 } from '../lib/local-models-client';
+import { SkeletonCardGrid } from './skeleton';
 import {
   LOCAL_MODEL_CAP_BYTES,
   deleteIndex,
@@ -55,11 +57,7 @@ export function LocalModelsGrid() {
   };
 
   if (models === null) {
-    return (
-      <div className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-        Loading offline tutors…
-      </div>
-    );
+    return <SkeletonCardGrid count={2} />;
   }
 
   return (
@@ -69,10 +67,13 @@ export function LocalModelsGrid() {
         <p className="rounded bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>
       )}
       {models.length === 0 ? (
-        <p className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-          No offline tutors yet. Open a folder and click "Build offline tutor" to
-          create one — runs entirely in your browser.
-        </p>
+        <div className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+          <p>No offline tutors yet.</p>
+          <p className="mt-1">
+            Open any folder with materials and click <span className="font-medium">Build offline tutor</span> —
+            an in-browser RAG index runs entirely on your machine.
+          </p>
+        </div>
       ) : (
         <ul className="grid gap-3 md:grid-cols-2">
           {models.map((m) => (
@@ -107,7 +108,7 @@ function ModelCard({
           </p>
           {model.builtAt && (
             <p className="mt-0.5 text-[11px] text-muted-foreground">
-              Built {new Date(model.builtAt).toLocaleString()}
+              Built {relativeTime(model.builtAt)}
               {model.stale && (
                 <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-amber-800">
                   Stale

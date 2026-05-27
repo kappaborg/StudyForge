@@ -70,6 +70,12 @@ class RetrievalRequest(BaseModel):
     # Exam-scope filter: when set, only chunks whose ``meta.chapter`` value
     # is in this list are eligible. Empty / unset means no chapter filter.
     chapters: list[int] | None = None
+    # Read-access escape hatch for instructor-shared folders. Chunks in
+    # these folders are eligible EVEN IF they belong to a different
+    # tenant — the API gateway computes this list per user from their
+    # FolderSubscription rows. The base tenantId still applies for the
+    # user's own materials; this is OR-ed in, not AND-ed.
+    allowed_folder_ids: list[str] | None = None
     query: str = Field(min_length=1, max_length=8_000)
     k: Annotated[int, Field(ge=1, le=50)] = 5
     fusion_k: Annotated[int, Field(ge=1, le=200)] = 60

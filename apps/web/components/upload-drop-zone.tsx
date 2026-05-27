@@ -40,6 +40,15 @@ const DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
 const DEV_USER_EMAIL = 'dev@studyforge.local';
 
 const MAX_CONCURRENCY = 3;
+// Files at or above this size go through S3 multipart. Smaller files
+// stay on the single-shot PUT path — multipart has overhead (extra
+// init call, per-part signing) that's pointless on a 200 KB PDF.
+const MULTIPART_THRESHOLD = 5 * 1024 * 1024;
+const PART_SIZE = 5 * 1024 * 1024;
+// Cap on parallel UploadPart requests per file. Per-file concurrency
+// matters less than per-upload-zone concurrency because S3 throttles
+// per-key writes anyway.
+const PART_CONCURRENCY = 3;
 
 const SUPPORTED_MIME = new Set([
   'application/pdf',
@@ -49,13 +58,33 @@ const SUPPORTED_MIME = new Set([
   'text/csv',
   'image/png',
   'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/bmp',
+  'image/tiff',
   'image/svg+xml',
   'application/x-ipynb+json',
   'application/json',
   'text/plain',
   'text/markdown',
+  // Audio (transcribed via faster-whisper on the worker)
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/x-wav',
+  'audio/wave',
+  'audio/webm',
+  'audio/ogg',
+  'audio/x-m4a',
+  'audio/mp4',
+  'audio/aac',
+  'audio/flac',
 ]);
-const SUPPORTED_EXT = ['.pdf', '.pptx', '.docx', '.ipynb', '.txt', '.md', '.markdown', '.json'];
+const SUPPORTED_EXT = [
+  '.pdf', '.pptx', '.docx', '.ipynb', '.txt', '.md', '.markdown', '.json',
+  '.mp3', '.wav', '.m4a', '.webm', '.ogg', '.aac', '.flac',
+  '.png', '.jpg', '.jpeg', '.webp', '.bmp', '.tiff', '.tif',
+];
 
 function isSupported(file: File): boolean {
   if (SUPPORTED_MIME.has(file.type)) return true;
@@ -93,35 +122,54 @@ export function UploadDropZone({ folderId }: { folderId?: string | null } = {}) 
         track('upload.started', {
           mime: job.file.type || 'unknown',
           sizeBytes: job.file.size,
+          multipart: job.file.size >= MULTIPART_THRESHOLD,
         });
 
         updateJob(job.id, { stage: { kind: 'hashing' } });
         const sha256 = await sha256Hex(job.file);
 
         updateJob(job.id, { stage: { kind: 'initing' } });
+        // Files ≥ 5 MB take the multipart path — failed chunks retry
+        // individually instead of forcing the whole file to start over.
+        const useMultipart = job.file.size >= MULTIPART_THRESHOLD;
         const init = await postJson<{
           uploadId: string;
-          signedUrl: string;
+          multipart: boolean;
+          signedUrl?: string;
+          parts?: Array<{ partNumber: number; signedUrl: string }>;
           expiresAt: string;
         }>(`${API_BASE}/v1/uploads/init`, {
           filename: job.file.name,
           mime: job.file.type || 'application/pdf',
           sizeBytes: job.file.size,
           sha256,
+          ...(useMultipart ? { multipart: true } : {}),
           ...(folderId ? { folderId } : {}),
         });
 
         updateJob(job.id, { stage: { kind: 'uploading', progress: 0 } });
-        await putWithProgress(init.signedUrl, job.file, (pct) => {
-          updateJob(job.id, { stage: { kind: 'uploading', progress: pct } });
-        });
+        let completedParts:
+          | Array<{ partNumber: number; etag: string }>
+          | undefined;
+        if (init.multipart && init.parts) {
+          completedParts = await uploadParts(job.file, init.parts, (pct) => {
+            updateJob(job.id, { stage: { kind: 'uploading', progress: pct } });
+          });
+        } else if (init.signedUrl) {
+          await putWithProgress(init.signedUrl, job.file, (pct) => {
+            updateJob(job.id, { stage: { kind: 'uploading', progress: pct } });
+          });
+        } else {
+          throw new Error('Init response missing both signedUrl and parts');
+        }
 
         updateJob(job.id, { stage: { kind: 'completing' } });
         const complete = await postJson<{
           state: string;
           documentId?: string;
           chunkCount?: number;
-        }>(`${API_BASE}/v1/uploads/${init.uploadId}/complete`, {});
+        }>(`${API_BASE}/v1/uploads/${init.uploadId}/complete`,
+          completedParts ? { parts: completedParts } : {});
 
         updateJob(job.id, {
           stage: {
@@ -134,6 +182,7 @@ export function UploadDropZone({ folderId }: { folderId?: string | null } = {}) 
           documentId: complete.documentId ?? 'unknown',
           chunkCount: complete.chunkCount ?? 0,
           durationMs: Math.round(performance.now() - startedAt),
+          multipart: init.multipart === true,
         });
       } catch (err) {
         updateJob(job.id, {
@@ -229,15 +278,15 @@ export function UploadDropZone({ folderId }: { folderId?: string | null } = {}) 
           id="file-input"
           type="file"
           multiple
-          accept=".pdf,.pptx,.docx,.ipynb,.txt,.md,.json,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/x-ipynb+json,text/plain,text/markdown,application/json"
+          accept=".pdf,.pptx,.docx,.ipynb,.txt,.md,.json,.mp3,.wav,.m4a,.webm,.ogg,.aac,.flac,.png,.jpg,.jpeg,.webp,.bmp,.tiff,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/x-ipynb+json,text/plain,text/markdown,application/json,audio/*,image/*"
           className="sr-only"
           onChange={onPickerChange}
         />
         <p className="text-sm font-medium">
-          Drop PDFs / PPTX / DOCX / IPYNB / TXT here, or click to choose
+          Drop PDFs / slides / notes / audio / screenshots here, or click to choose
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Multiple files OK · ≤ 1 GB each · {MAX_CONCURRENCY} in parallel · processed locally in Postgres + MinIO
+          Multiple files OK · audio transcribed · images scanned for text · up to {MAX_CONCURRENCY} at once
         </p>
       </label>
 
@@ -454,6 +503,108 @@ function putWithProgress(
     });
     xhr.addEventListener('error', () => reject(new Error('upload failed')));
     xhr.send(file);
+  });
+}
+
+/**
+ * S3 multipart upload — PUT each slice of the file to its pre-signed
+ * UploadPart URL, then return the {partNumber, etag} array the complete
+ * endpoint needs to call CompleteMultipartUpload.
+ *
+ * Each part runs through ``putPartWithEtag`` which extracts the ETag
+ * response header. The browser exposes ETag on cross-origin XHR only
+ * when the bucket's CORS policy lists ``ETag`` in ``ExposeHeaders`` — if
+ * that's missing the part upload succeeds at S3 but the client can't
+ * read the tag, and complete fails. Document this in the README so the
+ * misconfiguration is fixable.
+ *
+ * Concurrency is capped to keep memory bounded (each in-flight part is
+ * a 5 MB Blob slice held in RAM). A tiny worker-pool pattern pulls the
+ * next part as one finishes.
+ */
+async function uploadParts(
+  file: File,
+  parts: Array<{ partNumber: number; signedUrl: string }>,
+  onProgress: (pct: number) => void,
+): Promise<Array<{ partNumber: number; etag: string }>> {
+  const total = file.size;
+  // ``loaded`` is the cumulative bytes across all parts. We aggregate
+  // per-part progress events into a global percentage.
+  const perPartLoaded = new Map<number, number>();
+  const tickProgress = () => {
+    let loaded = 0;
+    for (const v of perPartLoaded.values()) loaded += v;
+    onProgress(Math.min(100, (loaded / total) * 100));
+  };
+
+  const results = new Map<number, string>();
+  let nextIdx = 0;
+
+  async function worker(): Promise<void> {
+    for (;;) {
+      const idx = nextIdx++;
+      if (idx >= parts.length) return;
+      const part = parts[idx]!;
+      const start = idx * PART_SIZE;
+      const end = Math.min(start + PART_SIZE, total);
+      const slice = file.slice(start, end);
+      let etag: string | null;
+      try {
+        etag = await putPartWithEtag(part.signedUrl, slice, (bytes) => {
+          perPartLoaded.set(part.partNumber, bytes);
+          tickProgress();
+        });
+      } catch (err) {
+        track('multipart.part_failed', {
+          partNumber: part.partNumber,
+          partCount: parts.length,
+          sizeBytes: total,
+        });
+        throw err;
+      }
+      if (!etag) {
+        throw new Error(
+          `Part ${part.partNumber} succeeded but no ETag header was readable. The S3/MinIO bucket needs ETag in ExposeHeaders (CORS).`,
+        );
+      }
+      results.set(part.partNumber, etag);
+      // Mark this part as fully uploaded in the aggregate.
+      perPartLoaded.set(part.partNumber, end - start);
+      tickProgress();
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(PART_CONCURRENCY, parts.length) }, () => worker());
+  await Promise.all(workers);
+
+  return parts
+    .map((p) => ({ partNumber: p.partNumber, etag: results.get(p.partNumber)! }))
+    .filter((p) => Boolean(p.etag));
+}
+
+function putPartWithEtag(
+  url: string,
+  blob: Blob,
+  onProgress: (bytes: number) => void,
+): Promise<string | null> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('PUT', url);
+    // Don't set Content-Type — S3 signed the URL without one, and a
+    // mismatched header invalidates the signature.
+    xhr.upload.addEventListener('progress', (e) => {
+      if (e.lengthComputable) onProgress(e.loaded);
+    });
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        const etag = xhr.getResponseHeader('ETag') || xhr.getResponseHeader('etag');
+        resolve(etag);
+      } else {
+        reject(new Error(`Part PUT ${xhr.status}: ${xhr.responseText.slice(0, 200)}`));
+      }
+    });
+    xhr.addEventListener('error', () => reject(new Error('Part upload failed')));
+    xhr.send(blob);
   });
 }
 

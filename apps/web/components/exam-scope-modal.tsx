@@ -6,6 +6,8 @@ import {
   parseExamScope,
   type ScopeEntry,
 } from '../lib/exam-scopes-client';
+import { track } from '../lib/analytics';
+import { useToast } from './toast';
 
 interface Props {
   folderId: string;
@@ -26,6 +28,7 @@ interface Props {
  * source text or has to start over after a bad parse.
  */
 export function ExamScopeModal({ folderId, folderName, onClose, onCreated }: Props) {
+  const toast = useToast();
   const [raw, setRaw] = useState('');
   const [examDate, setExamDate] = useState('');
   const [title, setTitle] = useState('');
@@ -60,6 +63,12 @@ export function ExamScopeModal({ folderId, folderName, onClose, onCreated }: Pro
         examDate: examDate || null,
         rawText: raw,
       });
+      track('scope.created', {
+        scopeId: created.id,
+        entryCount: created.scopes.length,
+        hasExamDate: Boolean(created.examDate),
+      });
+      toast.success(`Saved scope "${created.title}"`);
       onCreated(created.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save');
@@ -77,7 +86,7 @@ export function ExamScopeModal({ folderId, folderName, onClose, onCreated }: Pro
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="w-full max-w-2xl rounded-lg border border-border bg-background p-5 shadow-xl">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-border bg-background p-4 shadow-xl sm:p-5">
         <header className="mb-3">
           <h3 className="text-base font-semibold">
             {parsed ? 'Confirm exam scope' : 'New exam scope'}

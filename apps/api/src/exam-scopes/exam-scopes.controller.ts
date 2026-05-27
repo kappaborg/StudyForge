@@ -152,4 +152,41 @@ export class ExamScopesController {
   ): Promise<void> {
     await this.service.remove(user.tenantId, user.userId, id);
   }
+
+  // ── Sharing ───────────────────────────────────────────────────────────────
+
+  @Get(':id/share')
+  @ApiOperation({ summary: 'Get the active share link for a scope (if any).' })
+  async getShare(
+    @CurrentUser() user: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ) {
+    return (await this.service.getActiveShareLink(user.tenantId, user.userId, id)) ?? null;
+  }
+
+  @Post(':id/share')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Create or reuse a share link. Pass { rotate: true } to invalidate the old one and mint a fresh token.',
+  })
+  async share(
+    @CurrentUser() user: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: { rotate?: boolean },
+  ) {
+    return this.service.createShareLink(user.tenantId, user.userId, id, {
+      rotate: dto?.rotate ?? false,
+    });
+  }
+
+  @Delete(':id/share')
+  @HttpCode(204)
+  @ApiOperation({ summary: 'Revoke the active share link.' })
+  async revokeShare(
+    @CurrentUser() user: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<void> {
+    await this.service.revokeShareLink(user.tenantId, user.userId, id);
+  }
 }

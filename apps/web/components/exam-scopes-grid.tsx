@@ -8,6 +8,8 @@ import {
   listExamScopes,
   type ExamScopeRow,
 } from '../lib/exam-scopes-client';
+import { relativeDayLabel } from '../lib/format-document';
+import { SkeletonCardGrid } from './skeleton';
 
 export function ExamScopesGrid() {
   const [scopes, setScopes] = useState<ExamScopeRow[] | null>(null);
@@ -36,11 +38,7 @@ export function ExamScopesGrid() {
   };
 
   if (scopes === null) {
-    return (
-      <div className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-        Loading exam scopes…
-      </div>
-    );
+    return <SkeletonCardGrid count={2} />;
   }
 
   if (error) {
@@ -51,10 +49,20 @@ export function ExamScopesGrid() {
 
   if (scopes.length === 0) {
     return (
-      <p className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
-        No exam scopes yet. Open a folder and use "Set exam scope" — paste the
-        professor's message and we'll structure it for focused study.
-      </p>
+      <div className="rounded-md border border-dashed border-border p-6 text-center text-xs text-muted-foreground">
+        <p>No exam scopes yet.</p>
+        <p className="mt-1">
+          Paste a professor's exam message into any folder — we'll structure
+          it into theory / problems / chapters, and every tutor and quiz
+          becomes scope-aware.
+        </p>
+        <Link
+          href="/dashboard"
+          className="mt-3 inline-block rounded-md border border-border px-3 py-1.5 text-foreground hover:bg-accent"
+        >
+          Pick a folder →
+        </Link>
+      </div>
     );
   }
 
@@ -117,17 +125,19 @@ function ScopeCard({
       <div className="mt-3 flex items-center justify-between">
         <p className="text-[11px] text-muted-foreground">
           {chapters.length} chapter{chapters.length === 1 ? '' : 's'} ·{' '}
-          {scope.examDate
-            ? `${new Date(scope.examDate).toLocaleDateString()}${
-                dueSoon !== null
-                  ? dueSoon <= 0
-                    ? ' · past'
-                    : dueSoon <= 7
-                      ? ` · in ${dueSoon}d`
-                      : ''
+          {scope.examDate ? (
+            <span
+              className={
+                dueSoon !== null && dueSoon >= 0 && dueSoon <= 7
+                  ? 'font-medium text-foreground'
                   : ''
-              }`
-            : 'no date set'}
+              }
+            >
+              {relativeDayLabel(scope.examDate)}
+            </span>
+          ) : (
+            'no date set'
+          )}
         </p>
         <Link
           href={`/exam-scopes/${scope.id}`}

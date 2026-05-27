@@ -7,6 +7,7 @@ import { enforceBudget } from '../budget/budget-guard';
 import { BudgetService } from '../budget/budget.service';
 import { ProblemException } from '../common/problem';
 import { isUuid } from '../common/uuid';
+import { SharedFoldersService } from '../shared-folders/shared-folders.service';
 
 const KINDS = ['flowchart', 'mindmap', 'sequence'] as const;
 type DiagramKind = (typeof KINDS)[number];
@@ -31,7 +32,10 @@ const AI_WORKER_URL = process.env['AI_WORKER_URL'] ?? 'http://localhost:8001';
 @ApiTags('diagrams')
 @Controller()
 export class DiagramsController {
-  constructor(private readonly budget: BudgetService) {}
+  constructor(
+    private readonly budget: BudgetService,
+    private readonly shared: SharedFoldersService,
+  ) {}
 
   @Post('diagrams/generate')
   @HttpCode(200)
@@ -41,12 +45,14 @@ export class DiagramsController {
     @Body() dto: GenerateDiagramDto,
   ): Promise<DiagramDto> {
     await enforceBudget(this.budget, user.tenantId);
+    const allowedFolderIds = await this.shared.accessibleFolderIds(user.userId);
     const body = {
       tenant_id: user.tenantId,
       user_id: user.userId,
       course_id: isUuid(dto.courseId) ? dto.courseId : null,
       folder_id: isUuid(dto.folderId) ? dto.folderId : null,
       ...(dto.chapters && dto.chapters.length > 0 ? { chapters: dto.chapters } : {}),
+      ...(allowedFolderIds.length > 0 ? { allowed_folder_ids: allowedFolderIds } : {}),
       query: dto.query ?? '',
       kind: dto.kind ?? 'flowchart',
     };

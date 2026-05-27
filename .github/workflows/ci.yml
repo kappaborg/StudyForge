@@ -232,6 +232,112 @@ jobs:
           PLAYWRIGHT_BASE_URL: http://localhost:3000
         run: pnpm --filter web e2e
 
+  smoke:
+    # End-to-end integration smoke: spins up postgres + redis, runs API
+    # + ai-worker, walks two synthetic users through the 10-stage flow
+    # (signup → folder → YouTube ingest → flashcard → SRS → exam-scope
+    # parse+save → publish folder → share scope link → cross-tenant
+    # subscribe + fork → reranked tutor ask). Fails the PR if any
+    # response is non-2xx. The actual flow lives in ``scripts/smoke.sh``
+    # so you can re-run it against ``pnpm dev`` with a single command.
+    name: Integration · 10-stage smoke
+    needs: changes
+    if: |
+      needs.changes.outputs.api == 'true' ||
+      needs.changes.outputs.ai == 'true' ||
+      needs.changes.outputs.web == 'true' ||
+      github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: studyforge
+          POSTGRES_PASSWORD: studyforge
+          POSTGRES_DB: studyforge
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U studyforge -d studyforge"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+    env:
+      DATABASE_URL: postgresql://studyforge:studyforge@localhost:5432/studyforge?schema=public
+      REDIS_URL: redis://localhost:6379
+      AUTH_MODE: real
+      SESSION_COOKIE_SECRET: ci-smoke-secret-not-used-in-prod
+      API_URL: http://localhost:3001
+      WORKER_URL: http://localhost:8001
+      AI_WORKER_URL: http://localhost:8001
+      # Skip dense retrieval — fastembed model download is too heavy for
+      # CI. The smoke is structural; quality eval has its own job.
+      EMBEDDER_BACKEND: stub
+      RERANKER_BACKEND: identity
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with: { version: '${{ env.PNPM_VERSION }}' }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - uses: actions/setup-python@v5
+        with: { python-version: '${{ env.PYTHON_VERSION }}' }
+
+      - name: Install Node deps
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Install uv + worker deps
+        working-directory: apps/ai-worker
+        run: |
+          pip install uv
+          uv sync --extra dev
+
+      - name: Generate Prisma client + push schema
+        working-directory: apps/api
+        run: |
+          pnpm prisma generate
+          pnpm prisma db push --skip-generate
+
+      - name: Build API
+        run: pnpm --filter api build
+
+      - name: Start ai-worker (background)
+        working-directory: apps/ai-worker
+        run: |
+          uv run uvicorn src.main:app --host 0.0.0.0 --port 8001 \
+            > /tmp/worker.log 2>&1 &
+          echo $! > /tmp/worker.pid
+
+      - name: Start API (background)
+        working-directory: apps/api
+        run: |
+          node dist/main.js > /tmp/api.log 2>&1 &
+          echo $! > /tmp/api.pid
+
+      - name: Wait for ports
+        run: |
+          npx --yes wait-on http://localhost:8001/health http://localhost:3001/health \
+            --timeout 60000
+
+      - name: Run smoke
+        run: bash scripts/smoke.sh
+
+      - name: Upload server logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-logs
+          path: |
+            /tmp/api.log
+            /tmp/worker.log
+          retention-days: 7
+
   lighthouse:
     name: FE · Lighthouse CI (perf budgets)
     needs: changes

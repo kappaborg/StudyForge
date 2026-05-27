@@ -1,4 +1,4 @@
-import Link from 'next/link';
+import { WorkspaceTabs } from '../../../../components/workspace-tabs';
 
 /**
  * Course Workspace shell. Two parallel slots:
@@ -25,35 +25,11 @@ export default async function CourseWorkspaceLayout({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const tabs = [
-    { href: `/courses/${id}`, label: 'Materials' },
-    { href: `/courses/${id}/roadmap`, label: 'Roadmap' },
-    { href: `/courses/${id}/tutor`, label: 'Tutor' },
-    { href: `/courses/${id}/flashcards`, label: 'Flashcards' },
-    { href: `/courses/${id}/quizzes`, label: 'Quizzes' },
-    { href: `/courses/${id}/graph`, label: 'Graph' },
-    { href: `/courses/${id}/diagrams`, label: 'Diagrams' },
-    { href: `/courses/${id}/presentations`, label: 'Slides' },
-    { href: `/courses/${id}/analytics`, label: 'Analytics' },
-  ];
 
   return (
     <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_360px]">
       <div>
-        <nav
-          className="mb-6 flex gap-4 border-b border-border text-sm"
-          aria-label="Workspace tabs"
-        >
-          {tabs.map((t) => (
-            <Link
-              key={t.href}
-              href={t.href}
-              className="-mb-px border-b-2 border-transparent pb-2 text-muted-foreground hover:text-foreground hover:border-foreground/30"
-            >
-              {t.label}
-            </Link>
-          ))}
-        </nav>
+        <WorkspaceTabs courseId={id} />
         {children}
       </div>
       <aside aria-label="AI tutor" className="rounded-lg border border-border p-4">

@@ -41,6 +41,7 @@ model Tenant {
   folders        Folder[]
   localModels    LocalModel[]
   examScopes     ExamScope[]
+  sharedFolders  SharedFolder[]
   uploadBatches  UploadBatch[]
   documents      Document[]
   chatSessions   ChatSession[]
@@ -128,6 +129,11 @@ model User {
   sessions      Session[]
   localModels   LocalModel[]
   examScopes    ExamScope[]
+  flashcardReviews FlashcardReview[]
+  publishedShares  SharedFolder[]       @relation("PublishedShares")
+  folderSubscriptions FolderSubscription[]
+  scopeShareLinks  ScopeShareLink[]
+  streak           UserStreak?
 
   @@unique([tenantId, email])
   @@unique([oauthProvider, oauthSub])
@@ -225,6 +231,12 @@ model UploadBatch {
   state          UploadState @default(initiated)
   // sha256 of the request payload; identifies the canonical upload bundle.
   bundleSha256   String      @db.Citext
+  // Set only for files ≥ 5 MB that go through S3 multipart. Carries the
+  // S3-assigned ``UploadId`` so ``complete`` can finalise the multipart
+  // (or ``abort`` on a hard failure). ``partCount`` is the number of
+  // pre-signed UploadPart URLs the init step handed back.
+  s3MultipartUploadId String?
+  partCount      Int?
   sizeBytes      BigInt
   s3Key          String
   // MIME reported by the browser at init time. Persisted so the complete
@@ -303,9 +315,10 @@ model Folder {
   updatedAt DateTime   @updatedAt
   deletedAt DateTime?
 
-  documents   Document[]
-  localModels LocalModel[]
-  examScopes  ExamScope[]
+  documents    Document[]
+  localModels  LocalModel[]
+  examScopes   ExamScope[]
+  sharedAs     SharedFolder?
 
   @@unique([tenantId, slug])
   @@index([tenantId, deletedAt])
@@ -357,6 +370,105 @@ enum LocalModelStatus {
   failed
 }
 
+/// Daily-learning streak for a user. One row per user, lazy-created on
+/// first qualifying activity. We treat "active day" as: at least one SRS
+/// review answer OR one quiz submission. Just opening the app doesn't
+/// count — that would gamify presence rather than learning and drag
+/// quality down quickly.
+///
+/// Streaks are timezone-naive (UTC days). Honest tradeoff: a student in
+/// PST who reviews at 11:30 PM their time and again at 12:30 AM the next
+/// day sees a +2 streak even though it's the same "evening session" to
+/// them. The alternative — storing per-user timezone and bucketing — is
+/// a real ~half-day of work with edge cases (DST, travel) and the v1
+/// audience is mostly one-timezone; punt to v2 if real users complain.
+model UserStreak {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String   @unique @db.Uuid
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  currentStreak   Int      @default(0)
+  longestStreak   Int      @default(0)
+  // Stored as a date (no time) — postgres ``date`` column.
+  lastActiveDate  DateTime? @db.Date
+  // Cumulative count of active days ever. Cheap forever-stat to surface
+  // alongside the current streak ("33 days lifetime · 7 in a row").
+  totalActiveDays Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+/// A folder published by its owner under a short share code. Subscribers
+/// (other users) get read access to the folder's documents — same RAG /
+/// flashcards / scope-aware tutor on materials they didn't upload.
+/// Unpublishing soft-deletes the row (existing subscriptions stop
+/// resolving); a fresh ``code`` is generated each time the owner
+/// re-publishes so old codes don't keep working after rotation.
+model SharedFolder {
+  id          String   @id @default(uuid()) @db.Uuid
+  folderId    String   @unique @db.Uuid
+  folder      Folder   @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  publishedBy String   @db.Uuid
+  publisher   User     @relation("PublishedShares", fields: [publishedBy], references: [id], onDelete: Cascade)
+  tenantId    String   @db.Uuid
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // 8-char base32 code. Indexed unique so we can look up by code in O(1).
+  code        String   @unique
+  // Optional public name shown to subscribers. Defaults to the folder name.
+  title       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  subscriptions FolderSubscription[]
+
+  @@index([publishedBy])
+  @@index([tenantId])
+}
+
+/// A copy-on-accept share link for an ExamScope. The acceptor doesn't get
+/// shared retrieval (that's what folder publishing is for) — they get a
+/// FORK of the scope structure (mode entries, chapter lists, topics,
+/// exam date) attached to a folder of their own choosing.
+///
+/// Forks are independent rows in the acceptor's tenant; the source
+/// scope's owner can keep editing without affecting forks, and forks can
+/// be edited without disturbing the source.
+model ScopeShareLink {
+  id          String     @id @default(uuid()) @db.Uuid
+  scopeId     String     @db.Uuid
+  scope       ExamScope  @relation(fields: [scopeId], references: [id], onDelete: Cascade)
+  // URL-safe random token. Unique-indexed for O(1) lookup.
+  token       String     @unique
+  createdBy   String     @db.Uuid
+  creator     User       @relation(fields: [createdBy], references: [id], onDelete: Cascade)
+  // Optional auto-expiry; null = no expiry. The accept handler still
+  // enforces ``deletedAt IS NULL`` so revocation is always immediate.
+  expiresAt   DateTime?
+  usedCount   Int        @default(0)
+  createdAt   DateTime   @default(now())
+  deletedAt   DateTime?
+
+  @@index([scopeId, deletedAt])
+  @@index([createdBy])
+}
+
+/// A user's subscription to a published folder. Grants read-only access to
+/// that folder's documents + chunks for retrieval. Subscribers can ask
+/// questions, generate flashcards / quizzes scoped to the shared folder,
+/// and build offline tutors from it; they cannot upload, delete, or
+/// publish.
+model FolderSubscription {
+  id              String       @id @default(uuid()) @db.Uuid
+  userId          String       @db.Uuid
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sharedFolderId  String       @db.Uuid
+  sharedFolder    SharedFolder @relation(fields: [sharedFolderId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
+
+  @@unique([userId, sharedFolderId])
+  @@index([userId])
+}
+
 /// A student's structured capture of "what's on the exam." Created by
 /// pasting the professor's scope message; the parser produces a list of
 /// (mode, chapters, topics) entries stored in ``scopes`` JSONB. Every
@@ -382,6 +494,8 @@ model ExamScope {
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
   deletedAt DateTime?
+
+  shareLinks ScopeShareLink[]
 
   @@index([tenantId, userId, deletedAt])
   @@index([folderId])
@@ -591,11 +705,48 @@ model Flashcard {
   back          String
   // Citations are written to the Citation table; this is a denormalized count for the UI.
   citationCount Int           @default(0)
-  // SRS state lives per-user in flashcard_review (not modeled here yet).
   createdAt     DateTime      @default(now())
   deletedAt     DateTime?
 
+  reviews FlashcardReview[]
+
   @@index([deckId])
+}
+
+/// Per-user SM-2 spaced-repetition state for a single flashcard.
+///
+/// We lazy-create rows on first review rather than seeding one row per
+/// (user, card) when a deck is generated — students often skim a deck and
+/// never actually review most cards. ``dueAt`` is the load-bearing field;
+/// a daily review session is "every row where ``dueAt <= now``".
+///
+/// The algorithm is SuperMemo-2 with the standard adjustments:
+///   quality (0..5)
+///     < 3: fail. interval := 1d, easeFactor decays.
+///     >= 3: pass. interval := next_interval(easeFactor, prev_interval).
+model FlashcardReview {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @db.Uuid
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  flashcardId     String    @db.Uuid
+  flashcard       Flashcard @relation(fields: [flashcardId], references: [id], onDelete: Cascade)
+  // SM-2 state. 2.5 is the canonical starting ease.
+  easeFactor      Float     @default(2.5)
+  // Days between this review and the next. 0 means "show again today" (new).
+  intervalDays    Int       @default(0)
+  // When this card is next eligible. Indexed for "due today" queries.
+  dueAt           DateTime  @default(now())
+  reviewCount     Int       @default(0)
+  // Lapse = a review with quality < 3 after at least one successful review.
+  // Tracked separately so we can flag "leech" cards (lapse > N).
+  lapseCount      Int       @default(0)
+  lastQuality     Int?
+  lastReviewedAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([userId, flashcardId])
+  @@index([userId, dueAt])
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

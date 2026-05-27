@@ -30,31 +30,70 @@ function ensureInit(): void {
 
 // ── Typed event surface ──────────────────────────────────────────────────────
 
+/**
+ * Event catalogue — every name here is something we actually look at.
+ * Adding an event without a story for what dashboard / question it
+ * answers means it should not ship. Dropping an event is also fine and
+ * encouraged; ``flashcards.flipped`` was retired in the streaks pass
+ * because SRS review events tell us the same thing with less noise.
+ *
+ * Naming convention: ``noun.past_verb`` (snake_case noun, dotted, past
+ * tense). Keeps events explicit ("the user did X") instead of slipping
+ * into "tracking-as-logging" territory.
+ *
+ * Property hygiene:
+ *   • Never include free-form user text (query strings, document
+ *     content, message bodies) — only IDs, counts, sizes.
+ *   • Counts and durations are numbers, not strings.
+ *   • IDs always uuid-strings; never the underlying URL or filename.
+ */
 export type EventName =
+  // Funnel
+  | 'signup.completed'
+  // Materials
   | 'upload.started'
   | 'upload.completed'
+  | 'youtube.ingested'
+  | 'text.ingested'
+  | 'multipart.part_failed'
+  // Active learning
   | 'tutor.asked'
+  | 'srs.reviewed'
   | 'flashcards.generated'
-  | 'flashcards.flipped'
   | 'quizzes.generated'
   | 'quizzes.submitted'
   | 'roadmap.generated'
   | 'concepts.extracted'
   | 'diagram.generated'
+  // Scopes
+  | 'scope.created'
+  | 'scope.forked'
+  // Sharing
+  | 'folder.published'
+  | 'folder.subscribed'
+  // Misc
   | 'search.queried';
 
 export interface EventPropsMap {
-  'upload.started': { mime: string; sizeBytes: number };
-  'upload.completed': { documentId: string; chunkCount: number; durationMs: number };
+  'signup.completed': { userId: string };
+  'upload.started': { mime: string; sizeBytes: number; multipart: boolean };
+  'upload.completed': { documentId: string; chunkCount: number; durationMs: number; multipart: boolean };
+  'youtube.ingested': { documentId: string; chunkCount: number };
+  'text.ingested': { documentId: string; chunkCount: number; source: 'extension' | 'web' };
+  'multipart.part_failed': { partNumber: number; partCount: number; sizeBytes: number };
   'tutor.asked': { courseId: string | null; retrievedChunks: number; refusal: boolean };
+  'srs.reviewed': { flashcardId: string; quality: number; intervalDays: number };
   'flashcards.generated': { courseId: string; deckSize: number; deckId: string };
-  'flashcards.flipped': { deckId: string; flashcardId: string };
   'quizzes.generated': { courseId: string; itemCount: number; quizId: string };
   'quizzes.submitted': { quizId: string; score: number; items: number };
   'roadmap.generated': { courseId: string; weeks: number; roadmapId: string };
   'concepts.extracted': { courseId: string; conceptCount: number; edgeCount: number };
   'diagram.generated': { courseId: string; kind: string };
-  'search.queried': { query: string; hits: number };
+  'scope.created': { scopeId: string; entryCount: number; hasExamDate: boolean };
+  'scope.forked': { scopeId: string };
+  'folder.published': { folderId: string };
+  'folder.subscribed': { sharedFolderId: string };
+  'search.queried': { hits: number };
 }
 
 export function track<E extends EventName>(name: E, props: EventPropsMap[E]): void {

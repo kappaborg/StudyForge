@@ -2,7 +2,7 @@ import { Controller, Get, HttpCode, Param } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthContext } from '../auth/auth.context';
-import { isUuid } from '../common/uuid';
+import { CoursesService } from '../common/courses.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 interface DiffSection<T> {
@@ -24,7 +24,10 @@ const DEMO_COURSE_ID = '00000000-0000-0000-0000-00000000c0c0';
 @ApiTags('diff')
 @Controller()
 export class DiffController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly courses: CoursesService,
+  ) {}
 
   @Get('courses/:courseId/diff')
   @HttpCode(200)
@@ -122,18 +125,7 @@ export class DiffController {
   }
 
   private async resolveCourse(tenantId: string, explicit?: string): Promise<string> {
-    if (isUuid(explicit)) {
-      const existing = await this.prisma.course.findFirst({
-        where: { id: explicit, tenantId },
-      });
-      if (existing) return existing.id;
-    }
-    const inbox = await this.prisma.course.findUnique({ where: { id: DEMO_COURSE_ID } });
-    if (inbox) return inbox.id;
-    await this.prisma.course.create({
-      data: { id: DEMO_COURSE_ID, tenantId, title: 'Inbox' },
-    });
-    return DEMO_COURSE_ID;
+    return this.courses.ensureForTenant(tenantId, explicit);
   }
 }
 

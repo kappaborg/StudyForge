@@ -27,7 +27,9 @@ from .agents.semantic import SemanticAnalyzerAgent
 from .agents.tutor import TutorAgent
 from .api.admin import build_router as build_admin_router
 from .api.diagrams import build_router as build_diagrams_router
+from .api.deep_index import build_router as build_deep_index_router
 from .api.exam_scopes import build_router as build_exam_scopes_router
+from .api.ingest_url import build_router as build_ingest_url_router
 from .api.flashcards import build_router as build_flashcards_router
 from .api.presentations import build_router as build_presentations_router
 from .api.quizzes import build_router as build_quizzes_router
@@ -239,6 +241,26 @@ if _run_pool is not None:
         build_admin_router(
             pool=_run_pool,  # type: ignore[arg-type]
             embedder=embedder,
+        )
+    )
+    app.include_router(
+        build_ingest_url_router(
+            dsn=settings.database_url,
+            pool=_run_pool,  # type: ignore[arg-type]
+            embedder=embedder,
+        )
+    )
+    # Deep-index uses whatever LLM provider is configured. We only know
+    # about Groq today; the lookup helper makes it trivial to plug in the
+    # full ProviderRegistry later without touching the endpoint.
+    def _get_provider(provider_id: str) -> LLMProvider | None:
+        if provider_id == "groq":
+            return tutor_provider
+        return None
+    app.include_router(
+        build_deep_index_router(
+            pool=_run_pool,  # type: ignore[arg-type]
+            get_provider=_get_provider,
         )
     )
 

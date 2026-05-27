@@ -51,6 +51,7 @@ class DenseRetriever(Protocol):
         k: int,
         metadata_filter: MetadataFilter | None,
         chapters: list[int] | None = None,
+        allowed_folder_ids: list[str] | None = None,
     ) -> list[Candidate]: ...
 
 
@@ -67,6 +68,7 @@ class SparseRetriever(Protocol):
         k: int,
         metadata_filter: MetadataFilter | None,
         chapters: list[int] | None = None,
+        allowed_folder_ids: list[str] | None = None,
     ) -> list[Candidate]: ...
 
 
@@ -170,6 +172,7 @@ class Retriever:
             k=req.candidates_per_retriever,
             metadata_filter=req.metadata_filter,
             chapters=req.chapters,
+            allowed_folder_ids=req.allowed_folder_ids,
         )
         telemetry.dense_candidates = len(dense_candidates)
         telemetry.dense_latency_ms = self._elapsed_ms(dense_started)
@@ -183,6 +186,7 @@ class Retriever:
             k=req.candidates_per_retriever,
             metadata_filter=req.metadata_filter,
             chapters=req.chapters,
+            allowed_folder_ids=req.allowed_folder_ids,
         )
         telemetry.sparse_candidates = len(sparse_candidates)
         telemetry.sparse_latency_ms = self._elapsed_ms(sparse_started)

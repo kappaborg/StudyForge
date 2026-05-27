@@ -19,7 +19,9 @@ from uuid import uuid4
 
 from ..agents.contracts import Block, SafetyFlag, SanitizedBlock
 from ..rag.chunker import ChunkerDispatcher
+from .audio import is_audio, parse_audio
 from .docx import parse_docx
+from .image import is_image, parse_image
 from .notebook import parse_ipynb_json, parse_notebook
 from .pdf import parse_pdf
 from .plaintext import parse_plaintext
@@ -162,6 +164,25 @@ def _parse_by_mime(mime: str, filename: str, content: bytes) -> list[Block]:
         return blocks if blocks else parse_ipynb_json(content)
     if mime in _TEXT_MIMES or filename.lower().endswith((".txt", ".md", ".markdown", ".json")):
         return parse_plaintext(content)
+    if is_audio(mime, filename):
+        # On the free-tier deploy we ship without faster-whisper to keep the
+        # worker image under Render's 512 MB memory ceiling. Surface that to
+        # the user with a clear EmptyParseError so the upload UI shows a
+        # friendly "audio is disabled" message instead of hanging on a
+        # missing model.
+        import os
+        if os.getenv("DISABLE_AUDIO") == "1":
+            raise EmptyParseError(
+                mime,
+                filename,
+                detail=(
+                    "Audio transcription is disabled on the public demo. "
+                    "Try uploading a PDF, slide deck, or YouTube link."
+                ),
+            )
+        return parse_audio(content, filename=filename)
+    if is_image(mime, filename):
+        return parse_image(content, filename=filename)
     raise UnsupportedMimeError(mime)
 
 
@@ -191,9 +212,18 @@ class UnsupportedMimeError(ValueError):
 class EmptyParseError(ValueError):
     """Parser ran but found no extractable content. Distinct from
     ``UnsupportedMimeError`` so the gateway can surface a clearer error
-    (corrupt upload vs. wrong format)."""
+    (corrupt upload vs. wrong format).
 
-    def __init__(self, mime: str, filename: str) -> None:
-        super().__init__(f"no content extracted from {filename!r} ({mime})")
+    ``detail`` lets callers attach a user-facing reason — e.g. the
+    free-tier deploy uses it to say "audio is disabled" rather than
+    leaving the generic "no content extracted" message.
+    """
+
+    def __init__(
+        self, mime: str, filename: str, *, detail: str | None = None
+    ) -> None:
+        message = detail or f"no content extracted from {filename!r} ({mime})"
+        super().__init__(message)
         self.mime = mime
         self.filename = filename
+        self.detail = detail

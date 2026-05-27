@@ -156,8 +156,7 @@ export function LocalModelBuilder({
 
       {stage.kind === 'done' && (
         <p className={`${compact ? 'text-xs' : 'text-sm'} text-emerald-700`}>
-          ✓ Offline tutor ready · {stage.chunkCount} chunks ·{' '}
-          {formatBytes(stage.sizeBytes)}
+          ✓ Offline tutor ready · {formatBytes(stage.sizeBytes)} indexed
         </p>
       )}
 

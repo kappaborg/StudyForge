@@ -224,6 +224,60 @@ export class DocumentsController {
     return { id: updated.id, folderId: updated.folderId ?? inboxFolderId };
   }
 
+  @Post(':id/deep-index')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Run an LLM pass over this document to backfill chapter/section tags the regex chunker missed. Opt-in; costs one LLM call.',
+  })
+  async deepIndex(
+    @CurrentUser() user: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+  ): Promise<{
+    documentId: string;
+    sampledChunks: number;
+    updatedChunks: number;
+    chaptersFound: number;
+    sectionsFound: number;
+    skippedReason: string | null;
+  }> {
+    const doc = await this.requireOwnedDocument(user.tenantId, id);
+    const workerUrl = process.env['AI_WORKER_URL'] ?? 'http://localhost:8001';
+    const res = await fetch(`${workerUrl}/v1/ingest/deep-index`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        tenant_id: user.tenantId,
+        document_id: doc.id,
+      }),
+    });
+    if (!res.ok) {
+      const detail = (await res.text()).slice(0, 400);
+      throw new ProblemException({
+        status: 502,
+        code: 'deep-index.upstream-failed',
+        title: 'Deep-index pipeline failed',
+        detail,
+      });
+    }
+    const json = (await res.json()) as {
+      document_id: string;
+      sampled_chunks: number;
+      updated_chunks: number;
+      chapters_found: number;
+      sections_found?: number;
+      skipped_reason: string | null;
+    };
+    return {
+      documentId: json.document_id,
+      sampledChunks: json.sampled_chunks,
+      updatedChunks: json.updated_chunks,
+      chaptersFound: json.chapters_found,
+      sectionsFound: json.sections_found ?? 0,
+      skippedReason: json.skipped_reason,
+    };
+  }
+
   // ── helpers ───────────────────────────────────────────────────────────────
 
   private async requireOwnedDocument(

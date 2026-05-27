@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { apiGet, ApiError } from '../lib/dev-fetch';
+import { relativeTime } from '../lib/format-document';
+import { Skeleton } from './skeleton';
 
 interface MasteryRow {
   conceptId: string;
@@ -82,7 +84,22 @@ export function MasteryPanel({ courseId }: { courseId: string }) {
 
       {error && <p className="text-xs text-red-500">{error}</p>}
       {loading && rows.length === 0 && (
-        <p className="text-xs text-muted-foreground">Loading mastery…</p>
+        <ul
+          role="status"
+          aria-busy="true"
+          aria-label="Loading mastery"
+          className="space-y-2"
+        >
+          {Array.from({ length: 3 }).map((_, i) => (
+            <li key={i} className="rounded-md border border-border p-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <Skeleton className="h-3 w-1/3" />
+                <Skeleton className="h-3 w-10" />
+              </div>
+              <Skeleton className="mt-2 h-1 w-full rounded-full" />
+            </li>
+          ))}
+        </ul>
       )}
       {!loading && rows.length === 0 && (
         <p className="rounded-md border border-dashed border-border p-4 text-xs text-muted-foreground">
@@ -113,7 +130,7 @@ export function MasteryPanel({ courseId }: { courseId: string }) {
               </div>
               <div className="mt-1 text-[10px] uppercase tracking-wider text-muted-foreground">
                 {tier.label}
-                {row.lastSeenAt && ` · last seen ${new Date(row.lastSeenAt).toLocaleString()}`}
+                {row.lastSeenAt && ` · last seen ${relativeTime(row.lastSeenAt)}`}
               </div>
             </li>
           );

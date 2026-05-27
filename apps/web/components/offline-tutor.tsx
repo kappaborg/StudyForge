@@ -4,8 +4,12 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hasWebGPU } from '@studyforge/webllm-client';
 import { cosine, embed, warmEmbedder } from '../lib/client-embedder';
+import { relativeTime } from '../lib/format-document';
 import { loadChunks, loadMeta, type LocalChunk, type LocalIndexMeta } from '../lib/local-models-db';
 import { useAuth } from './auth-gate';
+import { CitationLink } from './citation-link';
+import { VoiceInputButton } from './voice-input-button';
+import { VoiceOutputButton } from './voice-output-button';
 
 /**
  * Offline tutor: WebLLM-driven Llama 3.2 1B + browser-local RAG against a
@@ -196,8 +200,7 @@ export function OfflineTutor({ folderId }: { folderId: string }) {
           <h1 className="text-xl font-semibold tracking-tight">Offline tutor</h1>
           {meta && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Indexed {meta.chunkCount} chunks · built{' '}
-              {new Date(meta.builtAt).toLocaleString()} · runs entirely in your browser
+              Built {relativeTime(new Date(meta.builtAt).toISOString())} · runs entirely in your browser
             </p>
           )}
         </div>
@@ -251,7 +254,7 @@ export function OfflineTutor({ folderId }: { folderId: string }) {
             {history.length > 0 && (
               <div className="space-y-3">
                 {history.map((turn, i) => (
-                  <Turn key={i} turn={turn} />
+                  <Turn key={i} turn={turn} folderId={folderId} />
                 ))}
               </div>
             )}
@@ -266,7 +269,7 @@ export function OfflineTutor({ folderId }: { folderId: string }) {
                     <span className="text-muted-foreground">Retrieving + thinking…</span>
                   )}
                 </p>
-                <CitationsTray sources={stage.sources} />
+                <CitationsTray sources={stage.sources} folderId={folderId} />
               </div>
             )}
 
@@ -291,17 +294,27 @@ export function OfflineTutor({ folderId }: { folderId: string }) {
                 }}
                 className="block w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/30"
               />
-              <div className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>
+              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                <span className="min-w-0 truncate">
                   Nothing leaves your browser. Answers cite the chunks they came from.
                 </span>
-                <button
-                  type="submit"
-                  disabled={!question.trim() || stage.kind === 'answering'}
-                  className="rounded-md bg-foreground px-4 py-1.5 text-xs font-medium text-background disabled:opacity-50"
-                >
-                  {stage.kind === 'answering' ? 'Thinking…' : 'Ask offline'}
-                </button>
+                <div className="flex items-center gap-2">
+                  <VoiceInputButton
+                    disabled={stage.kind === 'answering'}
+                    compact
+                    onTranscript={(text, final) => {
+                      if (!final) return;
+                      setQuestion((prev) => (prev ? prev.trimEnd() + ' ' + text : text));
+                    }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={!question.trim() || stage.kind === 'answering'}
+                    className="rounded-md bg-foreground px-4 py-1.5 text-xs font-medium text-background disabled:opacity-50"
+                  >
+                    {stage.kind === 'answering' ? 'Thinking…' : 'Ask offline'}
+                  </button>
+                </div>
               </div>
             </form>
 
@@ -316,7 +329,7 @@ export function OfflineTutor({ folderId }: { folderId: string }) {
   );
 }
 
-function Turn({ turn }: { turn: QATurn }) {
+function Turn({ turn, folderId }: { turn: QATurn; folderId: string }) {
   return (
     <article className="space-y-2">
       <div className="rounded-md bg-foreground px-4 py-2 text-sm text-background">
@@ -324,29 +337,43 @@ function Turn({ turn }: { turn: QATurn }) {
       </div>
       <div className="rounded-md border border-border bg-accent/30 p-4 text-sm">
         <p className="whitespace-pre-wrap leading-relaxed">{turn.answer}</p>
-        <CitationsTray sources={turn.sources} />
+        <div className="mt-2 flex justify-end">
+          <VoiceOutputButton text={turn.answer} />
+        </div>
+        <CitationsTray sources={turn.sources} folderId={folderId} />
       </div>
     </article>
   );
 }
 
-function CitationsTray({ sources }: { sources: SourceCitation[] }) {
+function CitationsTray({
+  sources,
+  folderId,
+}: {
+  sources: SourceCitation[];
+  folderId: string;
+}) {
   if (sources.length === 0) return null;
   return (
     <details className="mt-3 text-xs">
       <summary className="cursor-pointer text-muted-foreground">
         {sources.length} source{sources.length === 1 ? '' : 's'}
       </summary>
-      <ul className="mt-2 space-y-1 text-muted-foreground">
+      <ul className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
         {sources.map((s) => (
-          <li key={s.chunkId} className="flex gap-2">
-            <span className="font-mono">[{s.ord}]</span>
-            <span className="min-w-0 truncate">
-              {s.filename}
-              {s.page !== null && `, p.${s.page}`}
-              {' · '}
-              <span className="text-[10px]">score {s.score.toFixed(3)}</span>
-            </span>
+          <li key={s.chunkId}>
+            <CitationLink
+              ord={s.ord}
+              source={{
+                kind: 'offline',
+                folderId,
+                chunkId: s.chunkId,
+                docId: s.docId,
+                page: s.page,
+                filename: s.filename,
+              }}
+              label={`${s.filename}${s.page !== null ? ` · p.${s.page}` : ''}`}
+            />
           </li>
         ))}
       </ul>

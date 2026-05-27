@@ -21,6 +21,16 @@ const UNAUTH_PREFIXES = ['/health', '/docs', '/v1/auth', '/v1/lti'];
 
 export function registerDevAuth(app: FastifyInstance, auth: AuthService): void {
   if (process.env['AUTH_MODE'] !== 'dev') return;
+  // Hard-stop: dev-headers must NEVER run in production. They bypass auth.
+  // Even if AUTH_MODE=dev leaks into a production deployment, refuse to
+  // register the hook.
+  if (process.env['NODE_ENV'] === 'production') {
+    throw new Error(
+      'AUTH_MODE=dev is not permitted when NODE_ENV=production — the dev ' +
+        'header shortcut is an auth bypass. Unset AUTH_MODE or set it to ' +
+        '"session" for the production deploy.',
+    );
+  }
 
   app.addHook('preHandler', async (req: FastifyRequest) => {
     if (UNAUTH_PREFIXES.some((p) => req.url.startsWith(p))) return;

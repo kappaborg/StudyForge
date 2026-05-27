@@ -98,7 +98,6 @@ export function FoldersSidebar({
           const isActive = active === folder.id;
           const isSystem = folder.kind !== 'materials';
           const label = folder.name;
-          const icon = folder.kind === 'inbox' ? '📥' : folder.kind === 'trash' ? '🗑' : '📁';
           return (
             <li key={folder.id} className="group flex items-center gap-1">
               <button
@@ -110,10 +109,8 @@ export function FoldersSidebar({
                     : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
                 }`}
               >
-                <span aria-hidden className="text-xs">
-                  {icon}
-                </span>
-                {folder.color && (
+                <FolderIcon kind={folder.kind} />
+                {folder.color && folder.kind === 'materials' && (
                   <span
                     aria-hidden
                     className="h-2 w-2 rounded-full"
@@ -156,5 +153,43 @@ export function FoldersSidebar({
         </button>
       </form>
     </aside>
+  );
+}
+
+function FolderIcon({ kind }: { kind: Folder['kind'] }) {
+  const common = {
+    width: 14,
+    height: 14,
+    viewBox: '0 0 24 24',
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 2,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+    'aria-hidden': true,
+    className: 'flex-shrink-0',
+  };
+  if (kind === 'inbox') {
+    return (
+      <svg {...common}>
+        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+        <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+      </svg>
+    );
+  }
+  if (kind === 'trash') {
+    return (
+      <svg {...common}>
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+        <path d="M10 11v6" />
+        <path d="M14 11v6" />
+      </svg>
+    );
+  }
+  return (
+    <svg {...common}>
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
   );
 }

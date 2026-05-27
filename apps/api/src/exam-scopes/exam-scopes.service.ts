@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { Prisma } from '@prisma/client';
+import { randomBytes } from 'node:crypto';
 import { ProblemException } from '../common/problem';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -153,6 +154,178 @@ export class ExamScopesService {
     }
     const json = (await res.json()) as { title: string; scopes: ScopeEntry[] };
     return json;
+  }
+
+  // ── Sharing (study-group fork-on-accept) ────────────────────────────────
+
+  /**
+   * Create (or reuse) a share link for a scope the caller owns. Repeated
+   * calls return the existing token so the URL stays stable for a class
+   * Slack message; ``rotate=true`` mints a fresh one and invalidates the
+   * old.
+   */
+  async createShareLink(
+    tenantId: string,
+    userId: string,
+    scopeId: string,
+    opts: { rotate?: boolean } = {},
+  ): Promise<{ token: string; createdAt: string }> {
+    await this.requireOwned(tenantId, userId, scopeId);
+    if (!opts.rotate) {
+      const existing = await this.prisma.scopeShareLink.findFirst({
+        where: { scopeId, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      if (existing) {
+        return { token: existing.token, createdAt: existing.createdAt.toISOString() };
+      }
+    } else {
+      await this.prisma.scopeShareLink.updateMany({
+        where: { scopeId, deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+    }
+    // 32 base64url chars = 192 bits of entropy. Way more than guessable
+    // and fits in a single line of a chat message.
+    const token = randomBytes(24).toString('base64url');
+    const row = await this.prisma.scopeShareLink.create({
+      data: { scopeId, token, createdBy: userId },
+    });
+    return { token: row.token, createdAt: row.createdAt.toISOString() };
+  }
+
+  async revokeShareLink(tenantId: string, userId: string, scopeId: string): Promise<void> {
+    await this.requireOwned(tenantId, userId, scopeId);
+    await this.prisma.scopeShareLink.updateMany({
+      where: { scopeId, deletedAt: null },
+      data: { deletedAt: new Date() },
+    });
+  }
+
+  async getActiveShareLink(
+    tenantId: string,
+    userId: string,
+    scopeId: string,
+  ): Promise<{ token: string; createdAt: string } | null> {
+    await this.requireOwned(tenantId, userId, scopeId);
+    const row = await this.prisma.scopeShareLink.findFirst({
+      where: { scopeId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+    return row
+      ? { token: row.token, createdAt: row.createdAt.toISOString() }
+      : null;
+  }
+
+  /**
+   * Read-only preview by token. Surfaces what the acceptor is about to
+   * fork. Does NOT bump usedCount — that's reserved for ``acceptByToken``.
+   */
+  async previewByToken(token: string): Promise<{
+    title: string;
+    scopes: ScopeEntry[];
+    examDate: string | null;
+    sourceFolderName: string;
+    sharedBy: string;
+  }> {
+    const link = await this.prisma.scopeShareLink.findUnique({
+      where: { token },
+      include: {
+        scope: {
+          include: {
+            folder: { select: { name: true } },
+            user: { select: { email: true } },
+          },
+        },
+      },
+    });
+    if (!link || link.deletedAt) {
+      throw new ProblemException({
+        status: 404,
+        code: 'exam-scope.share-not-found',
+        title: 'Share link is invalid or revoked',
+      });
+    }
+    if (link.expiresAt && link.expiresAt < new Date()) {
+      throw new ProblemException({
+        status: 410,
+        code: 'exam-scope.share-expired',
+        title: 'Share link has expired',
+      });
+    }
+    return {
+      title: link.scope.title,
+      scopes: Array.isArray(link.scope.scopes)
+        ? (link.scope.scopes as unknown as ScopeEntry[])
+        : [],
+      examDate: link.scope.examDate?.toISOString() ?? null,
+      sourceFolderName: link.scope.folder.name,
+      sharedBy: link.scope.user.email,
+    };
+  }
+
+  /**
+   * Fork a shared scope into the acceptor's tenant, attached to one of
+   * THEIR folders. The acceptor picks the folder explicitly — we don't
+   * assume their own folder maps to the source's contents.
+   */
+  async acceptByToken(
+    tenantId: string,
+    userId: string,
+    token: string,
+    folderId: string,
+  ): Promise<ExamScopeDto> {
+    const link = await this.prisma.scopeShareLink.findUnique({
+      where: { token },
+      include: { scope: true },
+    });
+    if (!link || link.deletedAt) {
+      throw new ProblemException({
+        status: 404,
+        code: 'exam-scope.share-not-found',
+        title: 'Share link is invalid or revoked',
+      });
+    }
+    if (link.expiresAt && link.expiresAt < new Date()) {
+      throw new ProblemException({
+        status: 410,
+        code: 'exam-scope.share-expired',
+        title: 'Share link has expired',
+      });
+    }
+    // Verify the acceptor owns the target folder. We deliberately don't
+    // let them attach a fork to a folder they only subscribe to — forks
+    // should live in personal-tenant space so they're freely editable.
+    const folder = await this.prisma.folder.findFirst({
+      where: { id: folderId, tenantId, deletedAt: null },
+    });
+    if (!folder) {
+      throw new ProblemException({
+        status: 404,
+        code: 'exam-scope.folder-not-found',
+        title: 'Pick a folder you own',
+        detail:
+          'Forks must attach to one of your own folders so you can edit and re-share them freely.',
+      });
+    }
+
+    const cloned = await this.prisma.examScope.create({
+      data: {
+        tenantId,
+        userId,
+        folderId,
+        title: link.scope.title,
+        examDate: link.scope.examDate,
+        scopes: link.scope.scopes as unknown as Prisma.InputJsonValue,
+        rawText: link.scope.rawText,
+      },
+      include: { folder: true },
+    });
+    await this.prisma.scopeShareLink.update({
+      where: { id: link.id },
+      data: { usedCount: { increment: 1 } },
+    });
+    return toDto(cloned);
   }
 
   /**

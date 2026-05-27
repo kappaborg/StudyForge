@@ -9,6 +9,9 @@ import {
   apiGet,
   apiPost,
 } from '../lib/dev-fetch';
+import { CitationLink } from './citation-link';
+import { VoiceInputButton } from './voice-input-button';
+import { VoiceOutputButton } from './voice-output-button';
 
 interface SessionRow {
   id: string;
@@ -226,8 +229,10 @@ export function TutorChat({ folderId, courseId }: Props) {
   const sortedSessions = useMemo(() => sessions, [sessions]);
 
   return (
-    <div className="grid h-[calc(100vh-200px)] min-h-[600px] grid-cols-[220px_1fr] gap-4">
-      <aside className="flex flex-col overflow-hidden rounded-lg border border-border">
+    <div className="grid h-[calc(100vh-240px)] min-h-[480px] gap-4 md:h-[calc(100vh-200px)] md:min-h-[600px] md:grid-cols-[220px_1fr]">
+      {/* History rail: shown inline at md+, collapsed to a <details>
+          accordion on mobile so it doesn't eat the conversation pane. */}
+      <aside className="hidden flex-col overflow-hidden rounded-lg border border-border md:flex">
         <button
           type="button"
           onClick={newChat}
@@ -259,6 +264,34 @@ export function TutorChat({ folderId, courseId }: Props) {
           )}
         </div>
       </aside>
+
+      {/* Mobile session switcher */}
+      <details className="md:hidden">
+        <summary className="cursor-pointer rounded-md border border-border px-3 py-2 text-xs text-muted-foreground">
+          {sortedSessions.find((s) => s.id === activeId)?.title ?? 'New conversation'} · history
+        </summary>
+        <div className="mt-2 max-h-48 overflow-y-auto rounded-md border border-border">
+          <button
+            type="button"
+            onClick={newChat}
+            className="block w-full px-3 py-2 text-left text-xs hover:bg-accent"
+          >
+            + New chat
+          </button>
+          {sortedSessions.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              onClick={() => setActiveId(s.id)}
+              className={`block w-full truncate px-3 py-2 text-left text-xs hover:bg-accent ${
+                s.id === activeId ? 'bg-accent font-medium' : ''
+              }`}
+            >
+              {s.title ?? 'Untitled chat'}
+            </button>
+          ))}
+        </div>
+      </details>
 
       <main className="flex flex-col overflow-hidden rounded-lg border border-border">
         <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -298,19 +331,29 @@ export function TutorChat({ folderId, courseId }: Props) {
             className="block w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/30"
             aria-label="Question for the tutor"
           />
-          <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
-            <span>
+          <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate">
               {folderId
                 ? 'Scoped to current folder.'
                 : 'Searching all your materials.'}
             </span>
-            <button
-              type="submit"
-              disabled={pending || !input.trim()}
-              className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
-            >
-              {pending ? 'Asking…' : 'Send'}
-            </button>
+            <div className="flex items-center gap-2">
+              <VoiceInputButton
+                disabled={pending}
+                compact
+                onTranscript={(text, final) => {
+                  if (!final) return; // only commit final transcript segments
+                  setInput((prev) => (prev ? prev.trimEnd() + ' ' + text : text));
+                }}
+              />
+              <button
+                type="submit"
+                disabled={pending || !input.trim()}
+                className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
+              >
+                {pending ? 'Asking…' : 'Send'}
+              </button>
+            </div>
           </div>
         </form>
       </main>
@@ -340,20 +383,24 @@ function MessageBubble({ message }: { message: UIMessage }) {
             <span className="ml-1 inline-block h-3 w-1 animate-pulse bg-current align-middle" />
           )}
         </p>
+        {!isUser && !message.streaming && message.content && (
+          <div className="mt-2 flex justify-end">
+            <VoiceOutputButton text={message.content} />
+          </div>
+        )}
         {!isUser && message.citations && message.citations.length > 0 && (
           <details className="mt-3 text-xs">
             <summary className="cursor-pointer text-muted-foreground">
               {message.citations.length} citation{message.citations.length === 1 ? '' : 's'}
             </summary>
-            <ul className="mt-2 space-y-1 text-muted-foreground">
+            <ul className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
               {message.citations.map((c, i) => (
-                <li key={c.chunkId} className="flex gap-2">
-                  <span className="font-mono">[{i + 1}]</span>
-                  <span>
-                    chunk <code className="rounded bg-muted px-1">{c.chunkId.slice(0, 8)}…</code>
-                    {' · score '}
-                    {c.score.toFixed(3)}
-                  </span>
+                <li key={c.chunkId}>
+                  <CitationLink
+                    ord={i + 1}
+                    source={{ kind: 'cloud', chunkId: c.chunkId }}
+                    label="source"
+                  />
                 </li>
               ))}
             </ul>

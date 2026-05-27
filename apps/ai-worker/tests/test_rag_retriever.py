@@ -49,6 +49,7 @@ class StubDense(DenseRetriever):
         k: int,
         metadata_filter: MetadataFilter | None,
         chapters: list[int] | None = None,
+        allowed_folder_ids: list[str] | None = None,
     ) -> list[Candidate]:
         return self._c[:k]
 
@@ -67,6 +68,7 @@ class StubSparse(SparseRetriever):
         k: int,
         metadata_filter: MetadataFilter | None,
         chapters: list[int] | None = None,
+        allowed_folder_ids: list[str] | None = None,
     ) -> list[Candidate]:
         return self._c[:k]
 

@@ -1,0 +1,17 @@
+{
+  "name": "extension",
+  "version": "0.1.0",
+  "private": true,
+  "description": "StudyForge browser extension — send the current page / selection / linked PDF to your StudyForge folder.",
+  "scripts": {
+    "build": "node build.mjs",
+    "watch": "node build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist .turbo"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.270",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.2"
+  }
+}

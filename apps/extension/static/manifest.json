@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "StudyForge — Save to my materials",
+  "short_name": "StudyForge",
+  "version": "0.1.0",
+  "description": "Send the current page, selection, or linked PDF to a StudyForge folder. Requires a signed-in StudyForge tab.",
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Save to StudyForge"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "contextMenus",
+    "storage",
+    "cookies"
+  ],
+  "host_permissions": [
+    "http://localhost:3001/*",
+    "http://localhost:3000/*",
+    "https://*.studyforge.ai/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

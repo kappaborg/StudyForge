@@ -9,6 +9,12 @@ import {
   type ExamScopeRow,
   type ScopeEntry,
 } from '../lib/exam-scopes-client';
+import { relativeDayLabel } from '../lib/format-document';
+import { CitationLink } from './citation-link';
+import { ShareScopeModal } from './share-scope-modal';
+import { Skeleton } from './skeleton';
+import { VoiceInputButton } from './voice-input-button';
+import { VoiceOutputButton } from './voice-output-button';
 
 interface ChatTurn {
   q: string;
@@ -30,6 +36,7 @@ export function ExamScopeView({ scopeId }: { scopeId: string }) {
   const [history, setHistory] = useState<ChatTurn[]>([]);
   const [pending, setPending] = useState(false);
   const [partial, setPartial] = useState('');
+  const [shareOpen, setShareOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -110,14 +117,29 @@ export function ExamScopeView({ scopeId }: { scopeId: string }) {
     return <p className="rounded bg-rose-50 px-3 py-2 text-xs text-rose-700">{error}</p>;
   }
   if (!scope || !activeEntry) {
-    return <p className="text-sm text-muted-foreground">Loading scope…</p>;
+    return (
+      <section
+        role="status"
+        aria-busy="true"
+        aria-label="Loading scope"
+        className="space-y-4"
+      >
+        <Skeleton className="h-6 w-1/2" />
+        <Skeleton className="h-3 w-2/3" />
+        <div className="flex gap-2">
+          <Skeleton className="h-7 w-24" />
+          <Skeleton className="h-7 w-24" />
+        </div>
+        <Skeleton className="h-40 w-full rounded-lg" />
+      </section>
+    );
   }
 
   const allChapters = chapterUnion(scope);
 
   return (
     <section className="space-y-4">
-      <header className="flex items-start justify-between gap-4">
+      <header className="flex flex-col items-start gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight">{scope.title}</h1>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -127,11 +149,29 @@ export function ExamScopeView({ scopeId }: { scopeId: string }) {
             </Link>{' '}
             · Chapters {allChapters.join(', ') || '—'}
             {scope.examDate && (
-              <> · Exam {new Date(scope.examDate).toLocaleDateString()}</>
+              <>
+                {' '}
+                · Exam {relativeDayLabel(scope.examDate)}
+              </>
             )}
           </p>
         </div>
+        <button
+          type="button"
+          onClick={() => setShareOpen(true)}
+          className="rounded-md border border-border px-3 py-1.5 text-xs hover:bg-accent"
+        >
+          Share
+        </button>
       </header>
+
+      {shareOpen && (
+        <ShareScopeModal
+          scopeId={scope.id}
+          scopeTitle={scope.title}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       <nav className="flex flex-wrap gap-2 border-b border-border pb-2">
         {scope.scopes.map((s, i) => (
@@ -169,24 +209,28 @@ export function ExamScopeView({ scopeId }: { scopeId: string }) {
                 </div>
                 <div className="rounded-md border border-border bg-accent/30 p-4 text-sm">
                   <p className="whitespace-pre-wrap leading-relaxed">{t.a}</p>
+                  <div className="mt-2 flex justify-end">
+                    <VoiceOutputButton text={t.a} />
+                  </div>
                   {t.citations.length > 0 && (
                     <details className="mt-3 text-xs">
                       <summary className="cursor-pointer text-muted-foreground">
                         {t.citations.length} citation
                         {t.citations.length === 1 ? '' : 's'}
                       </summary>
-                      <ul className="mt-2 space-y-1 text-muted-foreground">
+                      <ul className="mt-2 flex flex-wrap gap-1.5 text-muted-foreground">
                         {t.citations.map((c, j) => (
-                          <li key={c.chunkId || j} className="flex gap-2">
-                            <span className="font-mono">[{j + 1}]</span>
-                            <span>
-                              doc{' '}
-                              <code className="rounded bg-muted px-1">
-                                {c.docId.slice(0, 8)}…
-                              </code>
-                              {c.page !== null && ` · page ${c.page}`} · score{' '}
-                              {c.score.toFixed(3)}
-                            </span>
+                          <li key={c.chunkId || j}>
+                            <CitationLink
+                              ord={j + 1}
+                              source={{
+                                kind: 'cloud',
+                                chunkId: c.chunkId,
+                                docId: c.docId,
+                                page: c.page,
+                              }}
+                              label={c.page !== null ? `p.${c.page}` : 'source'}
+                            />
                           </li>
                         ))}
                       </ul>
@@ -232,15 +276,25 @@ export function ExamScopeView({ scopeId }: { scopeId: string }) {
             }}
             className="block w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/30"
           />
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Answers are cited against your folder materials.</span>
-            <button
-              type="submit"
-              disabled={pending || !question.trim()}
-              className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
-            >
-              {pending ? 'Thinking…' : 'Ask'}
-            </button>
+          <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate">Answers are cited against your folder materials.</span>
+            <div className="flex items-center gap-2">
+              <VoiceInputButton
+                disabled={pending}
+                compact
+                onTranscript={(text, final) => {
+                  if (!final) return;
+                  setQuestion((prev) => (prev ? prev.trimEnd() + ' ' + text : text));
+                }}
+              />
+              <button
+                type="submit"
+                disabled={pending || !question.trim()}
+                className="rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background disabled:opacity-50"
+              >
+                {pending ? 'Thinking…' : 'Ask'}
+              </button>
+            </div>
           </div>
         </form>
 

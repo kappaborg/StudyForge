@@ -1,9 +1,12 @@
 import Link from 'next/link';
 import { BudgetPill } from '../../../components/budget-pill';
-import { DocumentsList } from '../../../components/documents-list';
+import { DailyPlan } from '../../../components/daily-plan';
 import { ExamScopesGrid } from '../../../components/exam-scopes-grid';
 import { LocalModelsGrid } from '../../../components/local-models-grid';
-import { NotificationsInbox } from '../../../components/notifications-inbox';
+import { RecentUploads } from '../../../components/recent-uploads';
+import { ReviewWidget } from '../../../components/review-widget';
+import { StreakCard } from '../../../components/streak-card';
+import { SubscriptionsPanel } from '../../../components/subscriptions-panel';
 import { TutorAsk } from '../../../components/tutor-ask';
 
 export default function DashboardPage() {
@@ -16,6 +19,8 @@ export default function DashboardPage() {
         </p>
       </div>
 
+      <DailyPlan />
+
       <section className="grid gap-4 md:grid-cols-3">
         <Link
           href="/upload"
@@ -23,7 +28,8 @@ export default function DashboardPage() {
         >
           <h2 className="font-medium">Upload materials</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            PDF · PPTX · DOCX · IPYNB · TXT · MD · JSON · ≤ 1 GB · scanned + chunked + indexed.
+            PDF, slides, docs, notebooks, audio, and images — up to 1 GB.
+            Indexed and ready to ask about within seconds.
           </p>
         </Link>
         <Link
@@ -32,10 +38,26 @@ export default function DashboardPage() {
         >
           <h2 className="font-medium">Open workspace</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Materials · Tutor · Roadmap · Flashcards · Quizzes · Graph.
+            One place for your tutor, study roadmap, flashcards, quizzes,
+            and concept map — all grounded in your materials.
           </p>
         </Link>
         <BudgetPill />
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <ReviewWidget />
+        <StreakCard />
+        <Link
+          href="/mastery"
+          className="rounded-lg border border-border p-5 hover:bg-accent"
+        >
+          <h2 className="font-medium">Mastery</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Per-concept progress across your folders. Click in to see where
+            you're weakest and quiz yourself adaptively.
+          </p>
+        </Link>
       </section>
 
       <section className="space-y-3">
@@ -44,6 +66,8 @@ export default function DashboardPage() {
         </h2>
         <TutorAsk placeholder="What is gradient descent?" />
       </section>
+
+      <SubscriptionsPanel />
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
@@ -69,15 +93,20 @@ export default function DashboardPage() {
         <LocalModelsGrid />
       </section>
 
-      <div className="grid gap-8 md:grid-cols-[1fr_360px]">
-        <section className="space-y-3">
+      <section className="space-y-3">
+        <div className="flex items-baseline justify-between">
           <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-            Your materials
+            Recently uploaded
           </h2>
-          <DocumentsList />
-        </section>
-        <NotificationsInbox />
-      </div>
+          <Link
+            href="/upload"
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            View all →
+          </Link>
+        </div>
+        <RecentUploads />
+      </section>
     </div>
   );
 }

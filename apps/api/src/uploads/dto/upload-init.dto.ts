@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
+  IsBoolean,
   IsIn,
   IsInt,
   IsOptional,
@@ -68,14 +69,47 @@ export class UploadInitDto {
   @IsString()
   @Matches(/^[a-f0-9]{64}$/)
   sha256!: string;
+
+  @ApiProperty({
+    required: false,
+    description:
+      'Request an S3 multipart upload. Files ≥ 5 MB should set this; the server returns an array of pre-signed UploadPart URLs instead of a single PUT URL.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  multipart?: boolean;
+}
+
+export class UploadInitPartDto {
+  @ApiProperty({ minimum: 1, maximum: 10_000 })
+  partNumber!: number;
+
+  @ApiProperty({ format: 'uri' })
+  signedUrl!: string;
 }
 
 export class UploadInitResponseDto {
   @ApiProperty({ format: 'uuid' })
   uploadId!: string;
 
-  @ApiProperty({ format: 'uri', description: 'Browser-reachable signed URL' })
-  signedUrl!: string;
+  @ApiProperty({
+    description:
+      'True when the response carries a ``parts`` array instead of a single ``signedUrl``. Files < 5 MB always receive the single-shot form.',
+  })
+  multipart!: boolean;
+
+  @ApiProperty({
+    required: false,
+    description: 'Single-shot PUT URL. Present iff ``multipart === false``.',
+  })
+  signedUrl?: string;
+
+  @ApiProperty({
+    required: false,
+    type: [UploadInitPartDto],
+    description: 'Pre-signed UploadPart URLs. Present iff ``multipart === true``.',
+  })
+  parts?: UploadInitPartDto[];
 
   @ApiProperty({ format: 'uri', required: false })
   publicUrl?: string;
@@ -85,4 +119,23 @@ export class UploadInitResponseDto {
 
   @ApiProperty({ format: 'date-time' })
   expiresAt!: string;
+}
+
+export class UploadCompletePartDto {
+  @ApiProperty({ minimum: 1, maximum: 10_000 })
+  partNumber!: number;
+
+  @ApiProperty()
+  etag!: string;
+}
+
+export class UploadCompleteDto {
+  @ApiProperty({
+    required: false,
+    type: [UploadCompletePartDto],
+    description:
+      'Required for multipart uploads — each successful UploadPart response carried an ETag header; pass them back so the server can issue CompleteMultipartUpload.',
+  })
+  @IsOptional()
+  parts?: UploadCompletePartDto[];
 }

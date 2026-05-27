@@ -1,34 +1,50 @@
 'use client';
 
+import Link from 'next/link';
 import * as React from 'react';
 import { apiGet, ApiError } from '../lib/dev-fetch';
+import { friendlyExt, relativeTime } from '../lib/format-document';
+import { SkeletonDocList } from './skeleton';
 
 interface DocumentRow {
   id: string;
   originalFilename: string;
   mime: string;
   pageCount: number | null;
-  chunkCount: number;
+  folderId: string | null;
   createdAt: string;
+}
+
+interface FolderRow {
+  id: string;
+  name: string;
+  color: string | null;
 }
 
 export function DocumentsList({
   limit = 20,
-  emptyHint = 'No materials yet — drop a PDF on the Upload page to get started.',
+  emptyHint = 'No materials yet — drop a file on the Materials page to get started.',
 }: {
   limit?: number;
   emptyHint?: string;
 }) {
   const [docs, setDocs] = React.useState<DocumentRow[] | null>(null);
+  const [folders, setFolders] = React.useState<Map<string, FolderRow>>(
+    () => new Map(),
+  );
   const [error, setError] = React.useState<string | null>(null);
-  const [reloadTick, setReloadTick] = React.useState(0);
 
   React.useEffect(() => {
     let cancelled = false;
-    (async () => {
+    const load = async () => {
       try {
-        const rows = await apiGet<DocumentRow[]>(`/v1/documents?limit=${limit}`);
-        if (!cancelled) setDocs(rows);
+        const [docRows, folderRows] = await Promise.all([
+          apiGet<DocumentRow[]>(`/v1/documents?limit=${limit}`),
+          apiGet<FolderRow[]>('/v1/folders').catch(() => [] as FolderRow[]),
+        ]);
+        if (cancelled) return;
+        setDocs(docRows);
+        setFolders(new Map(folderRows.map((f) => [f.id, f])));
       } catch (err) {
         if (cancelled) return;
         setError(
@@ -39,11 +55,15 @@ export function DocumentsList({
               : 'load failed',
         );
       }
-    })();
+    };
+    void load();
+    const onFocus = () => void load();
+    window.addEventListener('focus', onFocus);
     return () => {
       cancelled = true;
+      window.removeEventListener('focus', onFocus);
     };
-  }, [limit, reloadTick]);
+  }, [limit]);
 
   if (error !== null) {
     return (
@@ -54,11 +74,7 @@ export function DocumentsList({
   }
 
   if (docs === null) {
-    return (
-      <div className="rounded-md border border-border p-6 text-center text-sm text-muted-foreground">
-        Loading documents…
-      </div>
-    );
+    return <SkeletonDocList rows={Math.min(limit, 6)} />;
   }
 
   if (docs.length === 0) {
@@ -69,36 +85,60 @@ export function DocumentsList({
     );
   }
 
+  const now = new Date();
+
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-xs uppercase tracking-wider text-muted-foreground">
-          {docs.length} document{docs.length === 1 ? '' : 's'}
-        </p>
-        <button
-          type="button"
-          onClick={() => setReloadTick((t) => t + 1)}
-          className="text-xs text-muted-foreground hover:text-foreground"
-        >
-          Refresh
-        </button>
-      </div>
-      <ul className="divide-y divide-border rounded-md border border-border">
-        {docs.map((d) => (
-          <li key={d.id} className="flex items-center justify-between gap-4 px-4 py-3">
+    <ul className="divide-y divide-border rounded-md border border-border">
+      {docs.map((d) => {
+        const ext = friendlyExt(d.originalFilename, d.mime);
+        const folder = d.folderId ? folders.get(d.folderId) : null;
+        const href = d.folderId ? `/folders/${d.folderId}` : null;
+        const row = (
+          <div className="flex items-center gap-3 px-4 py-3">
+            <span
+              aria-hidden
+              className="flex h-8 w-10 flex-shrink-0 items-center justify-center rounded bg-muted text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+            >
+              {ext}
+            </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{d.originalFilename}</p>
-              <p className="text-xs text-muted-foreground">
-                {d.pageCount ?? '?'} page{d.pageCount === 1 ? '' : 's'} · {d.chunkCount} chunk{d.chunkCount === 1 ? '' : 's'} · uploaded{' '}
-                {new Date(d.createdAt).toLocaleString()}
-              </p>
+              <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                {folder && (
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      aria-hidden
+                      className="h-2 w-2 rounded-full"
+                      style={{ backgroundColor: folder.color ?? '#94a3b8' }}
+                    />
+                    <span className="truncate">{folder.name}</span>
+                  </span>
+                )}
+                {folder && d.pageCount !== null && <span aria-hidden>·</span>}
+                {d.pageCount !== null && (
+                  <span>
+                    {d.pageCount} page{d.pageCount === 1 ? '' : 's'}
+                  </span>
+                )}
+              </div>
             </div>
-            <span className="rounded bg-muted px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-              {d.id.slice(0, 8)}
+            <span className="flex-shrink-0 text-xs text-muted-foreground">
+              {relativeTime(d.createdAt, now)}
             </span>
+          </div>
+        );
+        return (
+          <li key={d.id}>
+            {href ? (
+              <Link href={href} className="block hover:bg-accent">
+                {row}
+              </Link>
+            ) : (
+              row
+            )}
           </li>
-        ))}
-      </ul>
-    </div>
+        );
+      })}
+    </ul>
   );
 }

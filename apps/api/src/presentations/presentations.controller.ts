@@ -7,6 +7,7 @@ import { enforceBudget } from '../budget/budget-guard';
 import { BudgetService } from '../budget/budget.service';
 import { ProblemException } from '../common/problem';
 import { isUuid } from '../common/uuid';
+import { SharedFoldersService } from '../shared-folders/shared-folders.service';
 
 class GeneratePresentationDto {
   @IsOptional() @IsString() courseId?: string;
@@ -28,7 +29,10 @@ const AI_WORKER_URL = process.env['AI_WORKER_URL'] ?? 'http://localhost:8001';
 @ApiTags('presentations')
 @Controller()
 export class PresentationsController {
-  constructor(private readonly budget: BudgetService) {}
+  constructor(
+    private readonly budget: BudgetService,
+    private readonly shared: SharedFoldersService,
+  ) {}
 
   @Post('presentations/generate')
   @HttpCode(200)
@@ -38,12 +42,14 @@ export class PresentationsController {
     @Body() dto: GeneratePresentationDto,
   ): Promise<PresentationDto> {
     await enforceBudget(this.budget, user.tenantId);
+    const allowedFolderIds = await this.shared.accessibleFolderIds(user.userId);
     const body = {
       tenant_id: user.tenantId,
       user_id: user.userId,
       course_id: isUuid(dto.courseId) ? dto.courseId : null,
       folder_id: isUuid(dto.folderId) ? dto.folderId : null,
       ...(dto.chapters && dto.chapters.length > 0 ? { chapters: dto.chapters } : {}),
+      ...(allowedFolderIds.length > 0 ? { allowed_folder_ids: allowedFolderIds } : {}),
       query: dto.query ?? '',
       slide_count: dto.slideCount ?? 8,
     };

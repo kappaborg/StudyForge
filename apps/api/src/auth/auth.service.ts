@@ -152,6 +152,79 @@ export class AuthService {
     };
   }
 
+  /**
+   * Find-or-create a user from a Google OAuth profile and issue a session.
+   * Match strategy:
+   *   1. Existing row with (oauthProvider='google', oauthSub=profile.sub) → reuse
+   *   2. Existing row with the same email → link (set oauthProvider/oauthSub)
+   *   3. None of the above → create a fresh tenant + user
+   *
+   * Google's ``sub`` is opaque and stable per Google account; ``email`` can
+   * change (rare) so the sub is the authoritative identity.
+   */
+  async loginViaGoogle(
+    profile: { sub: string; email: string; emailVerified: boolean },
+    meta: { userAgent?: string; ipHash?: string } = {},
+  ): Promise<IssuedSession & { isNewUser: boolean }> {
+    const normalisedEmail = profile.email.trim().toLowerCase();
+
+    let user = await this.prisma.user.findFirst({
+      where: {
+        oauthProvider: 'google',
+        oauthSub: profile.sub,
+        deletedAt: null,
+      },
+    });
+
+    if (!user) {
+      // Link an existing email-based account if the user previously signed
+      // up with email/password. Only link when Google says the email is
+      // verified — otherwise an attacker could claim a victim's account by
+      // creating a Google account with their email.
+      if (profile.emailVerified) {
+        user = await this.prisma.user.findFirst({
+          where: { email: normalisedEmail, deletedAt: null },
+        });
+        if (user) {
+          user = await this.prisma.user.update({
+            where: { id: user.id },
+            data: {
+              oauthProvider: 'google',
+              oauthSub: profile.sub,
+              emailVerified: true,
+            },
+          });
+        }
+      }
+    }
+
+    let isNewUser = false;
+    if (!user) {
+      // First-time sign-in. Per-user tenant for hard data isolation, same
+      // as the email/password signup path.
+      const baseName = normalisedEmail.split('@')[0] || normalisedEmail;
+      const tenant = await this.prisma.tenant.create({
+        data: {
+          name: baseName,
+          slug: `${slugify(baseName)}-${randomBytes(4).toString('hex')}`,
+        },
+      });
+      user = await this.prisma.user.create({
+        data: {
+          tenantId: tenant.id,
+          email: normalisedEmail,
+          oauthProvider: 'google',
+          oauthSub: profile.sub,
+          emailVerified: profile.emailVerified,
+        },
+      });
+      isNewUser = true;
+    }
+
+    const session = await this.issueSession(user, meta);
+    return { ...session, isNewUser };
+  }
+
   async meById(userId: string): Promise<AuthContext | null> {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user || user.deletedAt) return null;

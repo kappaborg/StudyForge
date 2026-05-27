@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Save to StudyForge</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <main id="root">
+      <header>
+        <h1>StudyForge</h1>
+        <p id="status" class="muted">Loading…</p>
+      </header>
+      <section id="page-meta" class="hidden">
+        <p class="meta-title" id="page-title"></p>
+        <p class="meta-url" id="page-url"></p>
+      </section>
+      <section id="form" class="hidden">
+        <label>
+          <span>Folder</span>
+          <select id="folder"></select>
+        </label>
+        <div class="actions">
+          <button id="send" type="button">Send to StudyForge</button>
+        </div>
+        <p id="form-hint" class="muted">
+          We'll capture the readable text of this tab as a new document.
+        </p>
+      </section>
+      <section id="signed-out" class="hidden">
+        <p>You aren't signed in to StudyForge in this browser.</p>
+        <a id="signin-link" href="#" target="_blank" rel="noreferrer">
+          Open StudyForge to sign in →
+        </a>
+      </section>
+      <section id="result" class="hidden">
+        <p class="success" id="result-msg"></p>
+        <a id="open-doc" href="#" target="_blank" rel="noreferrer">
+          Open in StudyForge →
+        </a>
+      </section>
+      <section id="error" class="hidden">
+        <p class="error" id="error-msg"></p>
+      </section>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

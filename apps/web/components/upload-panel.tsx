@@ -37,7 +37,7 @@ export function UploadPanel() {
               {active?.name ?? 'Inbox'}
               {active?.kind === 'inbox' && (
                 <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  (default — change to a lecture folder for tighter generation context)
+                  (default — pick a course folder so flashcards and quizzes stay on-topic)
                 </span>
               )}
             </div>

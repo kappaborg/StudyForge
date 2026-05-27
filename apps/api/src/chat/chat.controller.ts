@@ -6,6 +6,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Req,
   Res,
 } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -20,12 +21,13 @@ import {
   MaxLength,
   MinLength,
 } from 'class-validator';
-import type { FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthContext } from '../auth/auth.context';
 import { enforceBudget } from '../budget/budget-guard';
 import { BudgetService } from '../budget/budget.service';
 import { ProblemException } from '../common/problem';
+import { SharedFoldersService } from '../shared-folders/shared-folders.service';
 import { ChatService } from './chat.service';
 
 class TutorAskDto {
@@ -87,6 +89,7 @@ export class ChatController {
   constructor(
     private readonly budget: BudgetService,
     private readonly chat: ChatService,
+    private readonly shared: SharedFoldersService,
   ) {}
 
   // ── session CRUD ──────────────────────────────────────────────────────────
@@ -140,6 +143,7 @@ export class ChatController {
       await this.chat.appendUserMessage(sessionId, dto.query);
     }
 
+    const allowedFolderIds = await this.shared.accessibleFolderIds(user.userId);
     const body = {
       tenant_id: user.tenantId,
       user_id: user.userId,
@@ -147,6 +151,7 @@ export class ChatController {
       course_id: dto.courseId ?? null,
       folder_id: dto.folderId ?? null,
       ...(dto.chapters && dto.chapters.length > 0 ? { chapters: dto.chapters } : {}),
+      ...(allowedFolderIds.length > 0 ? { allowed_folder_ids: allowedFolderIds } : {}),
       query: applyModePrefix(dto.query, dto.mode),
       top_k: 5,
     };
@@ -198,6 +203,7 @@ export class ChatController {
   async stream(
     @CurrentUser() user: AuthContext,
     @Body() dto: TutorAskDto,
+    @Req() req: FastifyRequest,
     @Res() reply: FastifyReply,
   ): Promise<void> {
     await enforceBudget(this.budget, user.tenantId);
@@ -208,6 +214,7 @@ export class ChatController {
       await this.chat.appendUserMessage(sessionId, dto.query);
     }
 
+    const allowedFolderIds = await this.shared.accessibleFolderIds(user.userId);
     const body = {
       tenant_id: user.tenantId,
       user_id: user.userId,
@@ -215,6 +222,7 @@ export class ChatController {
       course_id: dto.courseId ?? null,
       folder_id: dto.folderId ?? null,
       ...(dto.chapters && dto.chapters.length > 0 ? { chapters: dto.chapters } : {}),
+      ...(allowedFolderIds.length > 0 ? { allowed_folder_ids: allowedFolderIds } : {}),
       query: applyModePrefix(dto.query, dto.mode),
       top_k: 5,
     };
@@ -236,6 +244,19 @@ export class ChatController {
     reply.raw.setHeader('cache-control', 'no-cache');
     reply.raw.setHeader('connection', 'keep-alive');
     reply.raw.setHeader('x-accel-buffering', 'no');
+    // SSE writes go directly to reply.raw, which bypasses Fastify's
+    // onSend hook chain — and therefore bypasses Nest's CORS layer.
+    // We have to set the CORS headers ourselves before the first write
+    // or the browser rejects the entire stream with a CORS error.
+    // The Origin header is echoed back (rather than '*') because the
+    // FE sends credentials: 'include' and Allow-Origin '*' is invalid
+    // alongside Allow-Credentials: true.
+    const origin = req.headers.origin;
+    if (typeof origin === 'string' && origin) {
+      reply.raw.setHeader('access-control-allow-origin', origin);
+      reply.raw.setHeader('access-control-allow-credentials', 'true');
+      reply.raw.setHeader('vary', 'origin');
+    }
 
     // Accumulators for post-stream persistence. We forward upstream bytes
     // verbatim to the client and parse a copy in-memory to derive the final

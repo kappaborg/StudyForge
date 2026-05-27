@@ -3,11 +3,13 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthContext } from '../auth/auth.context';
+import { CoursesService } from '../common/courses.service';
 import { ProblemException } from '../common/problem';
 import { enforceBudget } from '../budget/budget-guard';
 import { BudgetService } from '../budget/budget.service';
 import { isUuid } from '../common/uuid';
 import { PrismaService } from '../prisma/prisma.service';
+import { SharedFoldersService } from '../shared-folders/shared-folders.service';
 import { ArtifactCacheService } from '../sharing/artifact-cache.service';
 
 class GenerateRoadmapDto {
@@ -51,6 +53,8 @@ export class RoadmapsController {
     private readonly prisma: PrismaService,
     private readonly cache: ArtifactCacheService,
     private readonly budget: BudgetService,
+    private readonly courses: CoursesService,
+    private readonly shared: SharedFoldersService,
   ) {}
 
   @Post('roadmaps/generate')
@@ -79,12 +83,14 @@ export class RoadmapsController {
 
     const retrievalCourseId = isUuid(dto.courseId) ? dto.courseId : null;
     const retrievalFolderId = isUuid(dto.folderId) ? dto.folderId : null;
+    const allowedFolderIds = await this.shared.accessibleFolderIds(user.userId);
     const body = {
       tenant_id: user.tenantId,
       user_id: user.userId,
       course_id: retrievalCourseId,
       folder_id: retrievalFolderId,
       ...(dto.chapters && dto.chapters.length > 0 ? { chapters: dto.chapters } : {}),
+      ...(allowedFolderIds.length > 0 ? { allowed_folder_ids: allowedFolderIds } : {}),
       query: dto.query ?? '',
       weeks: dto.weeks ?? 4,
     };
@@ -189,18 +195,7 @@ export class RoadmapsController {
   }
 
   private async ensureCourse(tenantId: string, explicitCourseId?: string): Promise<string> {
-    if (isUuid(explicitCourseId)) {
-      const existing = await this.prisma.course.findFirst({
-        where: { id: explicitCourseId, tenantId },
-      });
-      if (existing) return existing.id;
-    }
-    const inbox = await this.prisma.course.findUnique({ where: { id: DEMO_COURSE_ID } });
-    if (inbox) return inbox.id;
-    await this.prisma.course.create({
-      data: { id: DEMO_COURSE_ID, tenantId, title: 'Inbox' },
-    });
-    return DEMO_COURSE_ID;
+    return this.courses.ensureForTenant(tenantId, explicitCourseId);
   }
 }
 

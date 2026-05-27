@@ -63,10 +63,18 @@ export interface SearchHit {
 @Injectable()
 export class SearchService implements OnModuleInit {
   private readonly log = new Logger(SearchService.name);
+  // When MEILI_HOST is unset, we don't even try to talk to Meilisearch —
+  // search goes straight to a Postgres ILIKE fallback. Lets the free
+  // deploy work without standing up a separate search node.
+  private readonly meiliEnabled = !!process.env['MEILI_HOST'];
 
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit(): Promise<void> {
+    if (!this.meiliEnabled) {
+      this.log.log('search backend: postgres (MEILI_HOST not set)');
+      return;
+    }
     // Ensure indexes exist + filterable attrs configured. Cheap on cold
     // boot; idempotent on restarts.
     try {
@@ -87,6 +95,7 @@ export class SearchService implements OnModuleInit {
   /** Upsert a single document into the documents + chunks indexes. Called
    *  by the uploads service once ingest completes. */
   async indexDocument(documentId: string): Promise<void> {
+    if (!this.meiliEnabled) return;
     try {
       const doc = await this.prisma.document.findUnique({
         where: { id: documentId },
@@ -127,6 +136,7 @@ export class SearchService implements OnModuleInit {
   /** Replace the concept index for a course (the extract handler wipes +
    *  rewrites concepts in one go; mirror that here). */
   async indexConceptsForCourse(courseId: string, tenantId: string): Promise<void> {
+    if (!this.meiliEnabled) return;
     try {
       const concepts = await this.prisma.concept.findMany({ where: { courseId } });
       // Remove stale entries for this course.
@@ -153,6 +163,9 @@ export class SearchService implements OnModuleInit {
     limit?: number;
   }): Promise<SearchHit[]> {
     const limit = opts.limit ?? 10;
+    if (!this.meiliEnabled) {
+      return this.searchViaPostgres(opts.query, opts.tenantId, limit);
+    }
     const tenantFilter = `tenantId = "${opts.tenantId}"`;
     try {
       const [docs, chunks, concepts] = await Promise.all([
@@ -194,6 +207,109 @@ export class SearchService implements OnModuleInit {
       return hits;
     } catch (err) {
       this.log.warn(`search failed: ${err}`);
+      return [];
+    }
+  }
+
+  /**
+   * Postgres ILIKE fallback used when Meilisearch isn't configured. Slower
+   * (no inverted index, no typo tolerance, no relevance ranking beyond the
+   * implicit ORDER BY recency) but keeps the command palette functional
+   * for free-tier deployments where standing up a Meilisearch node would
+   * blow the memory budget. Tenant-scoped at the SQL level.
+   */
+  private async searchViaPostgres(
+    query: string,
+    tenantId: string,
+    limit: number,
+  ): Promise<SearchHit[]> {
+    const q = query.trim();
+    if (!q) return [];
+    const pattern = `%${q}%`;
+    try {
+      const [docs, chunks, concepts] = await Promise.all([
+        this.prisma.document.findMany({
+          where: {
+            tenantId,
+            deletedAt: null,
+            originalFilename: { contains: q, mode: 'insensitive' },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: limit,
+          select: {
+            id: true,
+            originalFilename: true,
+            mime: true,
+            pageCount: true,
+            courseId: true,
+          },
+        }),
+        this.prisma.chunk.findMany({
+          where: {
+            documentVersion: {
+              document: { tenantId, deletedAt: null },
+            },
+            content: { contains: q, mode: 'insensitive' },
+          },
+          take: limit,
+          select: {
+            id: true,
+            content: true,
+            page: true,
+            documentVersion: {
+              select: { document: { select: { id: true, courseId: true } } },
+            },
+          },
+        }),
+        this.prisma.concept.findMany({
+          where: {
+            course: { tenantId },
+            label: { contains: q, mode: 'insensitive' },
+          },
+          take: limit,
+          select: {
+            id: true,
+            label: true,
+            description: true,
+            courseId: true,
+          },
+        }),
+      ]);
+      const hits: SearchHit[] = [];
+      for (const d of docs) {
+        hits.push({
+          kind: 'document',
+          id: d.id,
+          title: d.originalFilename,
+          snippet: `${d.mime}${d.pageCount ? ` · ${d.pageCount} page${d.pageCount === 1 ? '' : 's'}` : ''}`,
+          courseId: d.courseId,
+        });
+      }
+      for (const c of chunks) {
+        hits.push({
+          kind: 'chunk',
+          id: c.id,
+          title: snippetTitle(c.content),
+          snippet: c.content.slice(0, 220),
+          docId: c.documentVersion.document.id,
+          courseId: c.documentVersion.document.courseId,
+          page: c.page,
+        });
+      }
+      for (const k of concepts) {
+        hits.push({
+          kind: 'concept',
+          id: k.id,
+          title: k.label,
+          snippet: k.description ?? '',
+          courseId: k.courseId,
+        });
+      }
+      // Avoid an unused-var lint on the prepared pattern.
+      void pattern;
+      return hits;
+    } catch (err) {
+      this.log.warn(`postgres search failed: ${err}`);
       return [];
     }
   }

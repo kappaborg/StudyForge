@@ -27,7 +27,7 @@ from ..rag.contracts import Candidate, MetadataFilter, RetrievalRequest
 from ..rag.factory import is_stub_embedder
 from ..rag.retriever import Embedder, Retriever
 from ..rag.postgres import build_postgres_backends
-from ..rag.reranker import IdentityReranker
+from ..rag.factory import build_reranker
 from ._chunk_trim import trim_chunk_content
 
 log = logging.getLogger(__name__)
@@ -41,6 +41,7 @@ class FlashcardGenerateRequest(BaseModel):
     course_id: str | None = None
     folder_id: str | None = None
     chapters: list[int] | None = None
+    allowed_folder_ids: list[str] | None = None
     query: str = ""
     deck_size: int = Field(default=12, ge=1, le=50)
 
@@ -92,7 +93,7 @@ def build_router(
         embedder=embedder,
         dense=dense_path,
         sparse=sparse,
-        reranker=IdentityReranker(),
+        reranker=build_reranker(),
         resolver=resolver,
     )
 
@@ -109,6 +110,7 @@ def build_router(
                     course_id=req.course_id,
                     folder_id=req.folder_id,
                     chapters=req.chapters,
+                    allowed_folder_ids=req.allowed_folder_ids,
                     query=req.query or "concepts definitions key terms",
                     k=max(req.deck_size, 8),
                 )

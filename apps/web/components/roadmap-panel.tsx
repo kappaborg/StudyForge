@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { track } from '../lib/analytics';
 import { apiGetCached, apiPost, ApiError } from '../lib/dev-fetch';
+import { relativeTime } from '../lib/format-document';
 
 interface Milestone {
   id: string;
@@ -141,8 +142,8 @@ export function RoadmapPanel({ courseId }: { courseId: string }) {
                 <div>
                   <div className="font-medium">{r.title}</div>
                   <div className="text-xs text-muted-foreground">
-                    {r.weeks} weeks · {r.milestoneCount} milestones ·{' '}
-                    {new Date(r.createdAt).toLocaleString()}
+                    {r.weeks} weeks · {r.milestoneCount} milestones · created{' '}
+                    {relativeTime(r.createdAt)}
                   </div>
                 </div>
                 <button

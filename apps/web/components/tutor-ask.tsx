@@ -9,6 +9,9 @@ import {
   DEV_USER_EMAIL,
   DEV_USER_ID,
 } from '../lib/dev-fetch';
+import { CitationLink } from './citation-link';
+import { VoiceInputButton } from './voice-input-button';
+import { VoiceOutputButton } from './voice-output-button';
 
 interface Citation {
   chunkId: string;
@@ -155,6 +158,14 @@ export function TutorAsk({
           className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/30"
           aria-label="Question for the tutor"
         />
+        <VoiceInputButton
+          disabled={pending}
+          compact
+          onTranscript={(text, final) => {
+            if (!final) return;
+            setQuery((prev) => (prev ? prev.trimEnd() + ' ' + text : text));
+          }}
+        />
         <button
           type="submit"
           disabled={pending || !query.trim()}
@@ -187,22 +198,30 @@ export function TutorAsk({
             </span>
           </header>
           <p className="whitespace-pre-wrap leading-relaxed">{answer.text}</p>
+          {!answer.refusal && answer.text && (
+            <div className="mt-2 flex justify-end">
+              <VoiceOutputButton text={answer.text} />
+            </div>
+          )}
 
           {answer.citations.length > 0 && (
             <div className="mt-4 space-y-1">
               <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                 Sources
               </p>
-              <ul className="space-y-1 text-xs">
+              <ul className="flex flex-wrap gap-1.5 text-xs">
                 {answer.citations.map((c, i) => (
-                  <li key={c.chunkId} className="flex gap-3 text-muted-foreground">
-                    <span className="font-mono">[{i + 1}]</span>
-                    <span>
-                      doc <code className="rounded bg-muted px-1">{c.docId.slice(0, 8)}…</code>
-                      {c.page !== null && <> · page {c.page}</>}
-                      {' · score '}
-                      {c.score.toFixed(3)}
-                    </span>
+                  <li key={c.chunkId}>
+                    <CitationLink
+                      ord={i + 1}
+                      source={{
+                        kind: 'cloud',
+                        chunkId: c.chunkId,
+                        docId: c.docId,
+                        page: c.page,
+                      }}
+                      label={c.page !== null ? `p.${c.page}` : 'source'}
+                    />
                   </li>
                 ))}
               </ul>

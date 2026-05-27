@@ -140,12 +140,16 @@ def _derive_title(text: str, scopes: list[dict[str, object]]) -> str:
     chapters: set[int] = set()
     topics: list[str] = []
     for s in scopes:
-        for c in s.get("chapters", []) or []:  # type: ignore[union-attr]
-            if isinstance(c, int):
-                chapters.add(c)
-        for t in s.get("topics", []) or []:  # type: ignore[union-attr]
-            if isinstance(t, str) and t not in topics:
-                topics.append(t)
+        chapters_val = s.get("chapters")
+        if isinstance(chapters_val, list):
+            for c in chapters_val:
+                if isinstance(c, int):
+                    chapters.add(c)
+        topics_val = s.get("topics")
+        if isinstance(topics_val, list):
+            for t in topics_val:
+                if isinstance(t, str) and t not in topics:
+                    topics.append(t)
     if chapters:
         chap_str = "Ch. " + ", ".join(str(n) for n in sorted(chapters))
         if topics:

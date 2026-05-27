@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { track } from '../lib/analytics';
 import { apiGet, apiPost, ApiError } from '../lib/dev-fetch';
+import { relativeTime } from '../lib/format-document';
 
 interface QuizSummary {
   id: string;
@@ -174,7 +175,7 @@ export function QuizzesPanel({ courseId }: { courseId: string }) {
                 <div>
                   <div className="font-medium">{q.title}</div>
                   <div className="text-xs text-muted-foreground">
-                    {q.itemCount} questions · {new Date(q.createdAt).toLocaleString()}
+                    {q.itemCount} questions · created {relativeTime(q.createdAt)}
                   </div>
                 </div>
                 <button

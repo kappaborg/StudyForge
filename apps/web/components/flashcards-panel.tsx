@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { track } from '../lib/analytics';
 import { apiGetCached, apiPost, ApiError } from '../lib/dev-fetch';
+import { relativeTime } from '../lib/format-document';
 
 interface DeckSummary {
   id: string;
@@ -140,7 +141,7 @@ export function FlashcardsPanel({ courseId }: { courseId: string }) {
                 <div>
                   <div className="font-medium">{d.title}</div>
                   <div className="text-xs text-muted-foreground">
-                    {d.cardCount} cards · {new Date(d.createdAt).toLocaleString()}
+                    {d.cardCount} cards · created {relativeTime(d.createdAt)}
                   </div>
                 </div>
                 <button
@@ -169,7 +170,6 @@ export function FlashcardsPanel({ courseId }: { courseId: string }) {
                   <button
                     onClick={() => {
                       setFlipped((prev) => ({ ...prev, [card.id]: !prev[card.id] }));
-                      if (deck) track('flashcards.flipped', { deckId: deck.id, flashcardId: card.id });
                     }}
                     className="block w-full rounded-lg border border-border p-4 text-left transition-colors hover:bg-accent"
                   >

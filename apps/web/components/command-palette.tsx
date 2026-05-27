@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { track } from '../lib/analytics';
 import { apiGet, ApiError } from '../lib/dev-fetch';
 
@@ -29,12 +30,15 @@ function hrefFor(hit: SearchHit): string {
     return `/courses/${hit.courseId}`;
   }
   if (hit.kind === 'document') {
-    return '/dashboard';
+    // No direct document route; land them on the searchable materials
+    // browser so the doc is one click away from the result.
+    return '/upload';
   }
   return '/dashboard';
 }
 
 export function CommandPalette() {
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [hits, setHits] = useState<SearchHit[]>([]);
@@ -88,7 +92,9 @@ export function CommandPalette() {
         );
         setHits(res.hits);
         setActiveIdx(0);
-        track('search.queried', { query, hits: res.hits.length });
+        // Property hygiene: only the result count travels, never the
+        // user-supplied query text (PII risk + analytics noise).
+        track('search.queried', { hits: res.hits.length });
       } catch (err) {
         setError(err instanceof ApiError ? err.message : 'Search failed');
       } finally {
@@ -108,10 +114,11 @@ export function CommandPalette() {
         setActiveIdx((i) => Math.max(0, i - 1));
       } else if (e.key === 'Enter' && hits[activeIdx]) {
         const href = hrefFor(hits[activeIdx]!);
-        window.location.href = href;
+        setOpen(false);
+        router.push(href);
       }
     },
-    [hits, activeIdx],
+    [hits, activeIdx, router],
   );
 
   if (!open) return null;

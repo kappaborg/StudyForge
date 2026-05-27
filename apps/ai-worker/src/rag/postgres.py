@@ -123,10 +123,16 @@ class PgvectorDenseRetriever:
         k: int,
         metadata_filter: MetadataFilter | None,
         chapters: list[int] | None = None,
+        allowed_folder_ids: list[str] | None = None,
     ) -> list[Candidate]:
         pool = await self._pool.pool()
         # ``vector_cosine_ops`` makes ``<=>`` the cosine distance; we sort
         # ascending and convert to a [0, 1] similarity score for the Candidate.
+        #
+        # Access predicate: documents owned by this tenant, OR documents in
+        # a folder the user has read access to via subscription (shared
+        # folders). The folder filter (when set) still applies on top to
+        # let the user further scope a query.
         sql = """
             SELECT c.id AS chunk_id,
                    c.embedding <=> %(embedding)s AS cosine_distance
@@ -134,7 +140,13 @@ class PgvectorDenseRetriever:
               JOIN "DocumentVersion" v ON v.id = c."documentVersionId"
               JOIN "Document"        d ON d.id = v."documentId"
              WHERE c.embedding IS NOT NULL
-               AND d."tenantId" = %(tenant_id)s
+               AND (
+                 d."tenantId" = %(tenant_id)s
+                 OR (
+                   %(allowed_folder_ids)s::uuid[] IS NOT NULL
+                   AND d."folderId" = ANY(%(allowed_folder_ids)s::uuid[])
+                 )
+               )
                AND (%(course_id)s::uuid IS NULL OR d."courseId" = %(course_id)s::uuid)
                AND (%(folder_id)s::uuid IS NULL OR d."folderId" = %(folder_id)s::uuid)
                AND d."deletedAt" IS NULL
@@ -160,6 +172,7 @@ class PgvectorDenseRetriever:
                         "course_id": course_id,
                         "folder_id": folder_id,
                         "chapters": chapters if chapters else None,
+                        "allowed_folder_ids": allowed_folder_ids if allowed_folder_ids else None,
                         "k": k,
                     },
                 )
@@ -203,6 +216,7 @@ class TsvectorSparseRetriever:
         k: int,
         metadata_filter: MetadataFilter | None,
         chapters: list[int] | None = None,
+        allowed_folder_ids: list[str] | None = None,
     ) -> list[Candidate]:
         if not query.strip():
             return []
@@ -223,7 +237,13 @@ class TsvectorSparseRetriever:
               JOIN "Document"        d ON d.id = v."documentId",
                    parsed
              WHERE c.tsv @@ parsed.q
-               AND d."tenantId" = %(tenant_id)s
+               AND (
+                 d."tenantId" = %(tenant_id)s
+                 OR (
+                   %(allowed_folder_ids)s::uuid[] IS NOT NULL
+                   AND d."folderId" = ANY(%(allowed_folder_ids)s::uuid[])
+                 )
+               )
                AND (%(course_id)s::uuid IS NULL OR d."courseId" = %(course_id)s::uuid)
                AND (%(folder_id)s::uuid IS NULL OR d."folderId" = %(folder_id)s::uuid)
                AND d."deletedAt" IS NULL
@@ -247,6 +267,7 @@ class TsvectorSparseRetriever:
                         "course_id": course_id,
                         "folder_id": folder_id,
                         "chapters": chapters if chapters else None,
+                        "allowed_folder_ids": allowed_folder_ids if allowed_folder_ids else None,
                         "k": k,
                     },
                 )

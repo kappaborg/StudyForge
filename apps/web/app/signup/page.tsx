@@ -3,7 +3,13 @@
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useState } from 'react';
+import { GoogleSignInButton } from '../../components/google-sign-in-button';
+import { track } from '../../lib/analytics';
 import { authClient } from '../../lib/auth-client';
+
+// When NEXT_PUBLIC_AUTH_MODE=production, the public deploy is Google-only.
+// Hide the email/password form so users always go through OAuth.
+const isProd = process.env['NEXT_PUBLIC_AUTH_MODE'] === 'production';
 
 export default function SignupPage() {
   const router = useRouter();
@@ -28,7 +34,8 @@ export default function SignupPage() {
     }
     setBusy(true);
     try {
-      await authClient.signup(email.trim(), password);
+      const me = await authClient.signup(email.trim(), password);
+      track('signup.completed', { userId: me.userId });
       router.replace(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create account');
@@ -41,9 +48,22 @@ export default function SignupPage() {
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-12">
       <h1 className="text-2xl font-semibold tracking-tight">Create your account</h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        Free, with your own private workspace. Drop in PDFs and StudyForge takes it from there.
+        Free, with your own private workspace. Drop in your course materials
+        and StudyForge takes it from there.
       </p>
-      <form className="mt-6 space-y-4" onSubmit={submit}>
+      <div className="mt-6 space-y-3">
+        <GoogleSignInButton label="Sign up with Google" />
+      </div>
+      {!isProd && (
+        <div className="my-6 flex items-center gap-3">
+          <hr className="flex-1 border-border" />
+          <span className="text-xs uppercase tracking-wider text-muted-foreground">
+            or with email
+          </span>
+          <hr className="flex-1 border-border" />
+        </div>
+      )}
+      {!isProd && <form className="space-y-4" onSubmit={submit}>
         <label className="block text-sm">
           <span className="text-muted-foreground">Email</span>
           <input
@@ -89,7 +109,7 @@ export default function SignupPage() {
         >
           {busy ? 'Creating account…' : 'Create account'}
         </button>
-      </form>
+      </form>}
       <p className="mt-6 text-center text-sm text-muted-foreground">
         Already have an account?{' '}
         <Link href={`/login?next=${encodeURIComponent(next)}`} className="text-foreground underline">

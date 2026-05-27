@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { API_BASE, DEV_TENANT_ID, DEV_USER_EMAIL, DEV_USER_ID, apiGet } from '../lib/dev-fetch';
+import { useToast } from './toast';
 
 interface ImpactDto {
   ingestionInFlight: boolean;
@@ -18,6 +19,10 @@ interface Props {
   documentId: string;
   filename: string;
   trashed: boolean;
+  /** Total chunks across all versions. Used to decide whether Deep-index
+   * is worth offering — docs with one chunk or less have no structure
+   * for the LLM pass to surface. */
+  chunkCount: number;
   onChanged: () => void;
 }
 
@@ -29,12 +34,20 @@ function devHeaders(): Record<string, string> {
   };
 }
 
-export function DocumentRowActions({ documentId, filename, trashed, onChanged }: Props) {
+export function DocumentRowActions({
+  documentId,
+  filename,
+  trashed,
+  chunkCount,
+  onChanged,
+}: Props) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [impact, setImpact] = useState<ImpactDto | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  const [deepBusy, setDeepBusy] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,6 +91,53 @@ export function DocumentRowActions({ documentId, filename, trashed, onChanged }:
       setError(err instanceof Error ? err.message : 'Delete failed');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const runDeepIndex = async () => {
+    setMenuOpen(false);
+    setDeepBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/v1/documents/${documentId}/deep-index`, {
+        method: 'POST',
+        headers: { ...devHeaders(), 'content-type': 'application/json' },
+        body: '{}',
+        credentials: 'include',
+      });
+      if (!res.ok) {
+        const text = (await res.text()).slice(0, 200);
+        throw new Error(text || `HTTP ${res.status}`);
+      }
+      const json = (await res.json()) as {
+        updatedChunks: number;
+        chaptersFound: number;
+        sectionsFound?: number;
+        skippedReason: string | null;
+      };
+      if (json.skippedReason) {
+        toast.info(`Deep-index skipped: ${json.skippedReason}`);
+      } else {
+        // Build a result line that reflects what actually landed. Older
+        // structured PDFs return chapters; transcripts and unstructured
+        // notes return section topic labels via the rewritten prompt.
+        const parts: string[] = [
+          `${json.updatedChunks} chunk${json.updatedChunks === 1 ? '' : 's'} tagged`,
+        ];
+        if (json.chaptersFound > 0) {
+          parts.push(
+            `${json.chaptersFound} chapter${json.chaptersFound === 1 ? '' : 's'}`,
+          );
+        }
+        const sections = json.sectionsFound ?? 0;
+        if (sections > 0) {
+          parts.push(`${sections} topic${sections === 1 ? '' : 's'}`);
+        }
+        toast.success(`Deep-indexed ${filename} · ${parts.join(' · ')}`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Deep-index failed');
+    } finally {
+      setDeepBusy(false);
     }
   };
 
@@ -126,13 +186,25 @@ export function DocumentRowActions({ documentId, filename, trashed, onChanged }:
               Restore to Inbox
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={openDeleteModal}
-              className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-accent"
-            >
-              Delete…
-            </button>
+            <>
+              {chunkCount > 1 && (
+                <button
+                  type="button"
+                  onClick={runDeepIndex}
+                  disabled={deepBusy}
+                  className="block w-full px-3 py-2 text-left text-xs hover:bg-accent disabled:opacity-50"
+                >
+                  {deepBusy ? 'Deep-indexing…' : 'Deep-index (LLM)'}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={openDeleteModal}
+                className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-accent"
+              >
+                Delete…
+              </button>
+            </>
           )}
         </div>
       )}

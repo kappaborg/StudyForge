@@ -4,10 +4,14 @@ import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { apiGet, ApiError } from '../lib/dev-fetch';
 import { useFolders, type Folder } from '../lib/folders';
+import { friendlyExt, relativeTime } from '../lib/format-document';
 import { listLocalModels, type LocalModelRow } from '../lib/local-models-client';
 import { DocumentRowActions } from './document-row-actions';
 import { ExamScopeModal } from './exam-scope-modal';
 import { LocalModelBuilder } from './local-model-builder';
+import { PublishFolderPanel } from './publish-folder-panel';
+import { SkeletonDocList } from './skeleton';
+import { YouTubeIngestModal } from './youtube-ingest-modal';
 
 interface Document {
   id: string;
@@ -33,6 +37,7 @@ export function FolderView({ folderId }: { folderId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [localModel, setLocalModel] = useState<LocalModelRow | null>(null);
   const [scopeModalOpen, setScopeModalOpen] = useState(false);
+  const [youtubeModalOpen, setYoutubeModalOpen] = useState(false);
 
   const folder: Folder | undefined = folders.find((f) => f.id === folderId);
 
@@ -73,7 +78,7 @@ export function FolderView({ folderId }: { folderId: string }) {
 
   return (
     <section className="space-y-6">
-      <header className="flex items-baseline justify-between gap-4">
+      <header className="flex flex-col items-start gap-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">
             {folder ? folder.name : 'Folder'}
@@ -87,13 +92,20 @@ export function FolderView({ folderId }: { folderId: string }) {
           </p>
         </div>
         {!isTrash && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setScopeModalOpen(true)}
               className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
             >
               Set exam scope
+            </button>
+            <button
+              type="button"
+              onClick={() => setYoutubeModalOpen(true)}
+              className="rounded-md border border-border px-3 py-2 text-sm hover:bg-accent"
+            >
+              Add from YouTube
             </button>
             <Link
               href={`/upload?folder=${folderId}`}
@@ -114,6 +126,26 @@ export function FolderView({ folderId }: { folderId: string }) {
             setScopeModalOpen(false);
             window.location.href = `/exam-scopes/${id}`;
           }}
+        />
+      )}
+
+      {youtubeModalOpen && (
+        <YouTubeIngestModal
+          folderId={folderId}
+          folderName={folder?.name ?? 'this folder'}
+          onClose={() => setYoutubeModalOpen(false)}
+          onIngested={() => {
+            setYoutubeModalOpen(false);
+            void load();
+            void refreshLocalModel();
+          }}
+        />
+      )}
+
+      {!isTrash && (
+        <PublishFolderPanel
+          folderId={folderId}
+          folderName={folder?.name ?? 'this folder'}
         />
       )}
 
@@ -144,38 +176,52 @@ export function FolderView({ folderId }: { folderId: string }) {
           Materials ({docs.length})
         </h2>
         {error && <p className="text-xs text-red-500">{error}</p>}
-        {loading && docs.length === 0 && (
-          <p className="text-xs text-muted-foreground">Loading…</p>
-        )}
+        {loading && docs.length === 0 && <SkeletonDocList rows={4} />}
         {!loading && docs.length === 0 && !error && (
           <EmptyState kind={folder?.kind ?? 'materials'} folderId={folderId} />
         )}
         {docs.length > 0 && (
           <ul className="divide-y divide-border rounded-lg border border-border">
-            {docs.map((d) => (
-              <li
-                key={d.id}
-                className="flex items-center justify-between gap-2 px-4 py-3 text-sm"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className={`truncate font-medium ${d.deletedAt ? 'text-muted-foreground line-through' : ''}`}>
-                    {d.originalFilename}
+            {docs.map((d) => {
+              const ext = friendlyExt(d.originalFilename, d.mime);
+              return (
+                <li
+                  key={d.id}
+                  className="flex items-center gap-3 px-4 py-3 text-sm"
+                >
+                  <span
+                    aria-hidden
+                    className="flex h-8 w-10 flex-shrink-0 items-center justify-center rounded bg-muted text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+                  >
+                    {ext}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div
+                      className={`truncate font-medium ${d.deletedAt ? 'text-muted-foreground line-through' : ''}`}
+                    >
+                      {d.originalFilename}
+                    </div>
+                    <div className="mt-0.5 text-xs text-muted-foreground">
+                      {d.pageCount !== null && (
+                        <>
+                          {d.pageCount} page{d.pageCount === 1 ? '' : 's'} ·{' '}
+                        </>
+                      )}
+                      {relativeTime(d.createdAt)}
+                    </div>
                   </div>
-                  <div className="mt-0.5 text-xs text-muted-foreground">
-                    {d.mime} · {d.pageCount ?? 0} pages · {d.chunkCount} chunks ·{' '}
-                    {new Date(d.createdAt).toLocaleDateString()}
-                  </div>
-                </div>
-                <DocumentRowActions
-                  documentId={d.id}
-                  filename={d.originalFilename}
-                  trashed={d.deletedAt !== null}
-                  onChanged={() => {
-                    void load();
-                  }}
-                />
-              </li>
-            ))}
+                  <DocumentRowActions
+                    documentId={d.id}
+                    filename={d.originalFilename}
+                    trashed={d.deletedAt !== null}
+                    chunkCount={d.chunkCount}
+                    onChanged={() => {
+                      void load();
+                    }}
+                  />
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
@@ -235,8 +281,7 @@ function OfflineTutorPanel({
       </div>
       {ready && model && (
         <p className="mt-2 text-[11px] text-muted-foreground">
-          {model.chunkCount} chunks indexed · built{' '}
-          {model.builtAt ? new Date(model.builtAt).toLocaleString() : 'recently'}
+          Built {model.builtAt ? relativeTime(model.builtAt) : 'recently'}
           {model.stale && ' · stale'}
         </p>
       )}

@@ -1,14 +1,18 @@
-import { Body, Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthContext } from '../auth/auth.context';
+import { CoursesService } from '../common/courses.service';
 import { ProblemException } from '../common/problem';
 import { enforceBudget } from '../budget/budget-guard';
 import { BudgetService } from '../budget/budget.service';
 import { isUuid } from '../common/uuid';
 import { PrismaService } from '../prisma/prisma.service';
+import { SharedFoldersService } from '../shared-folders/shared-folders.service';
 import { ArtifactCacheService } from '../sharing/artifact-cache.service';
+import { StreaksService } from '../streaks/streaks.service';
+import { SrsService } from './srs.service';
 
 class GenerateFlashcardsDto {
   // Accept any non-empty string here; the controller resolves "non-UUID"
@@ -43,6 +47,12 @@ class GenerateFlashcardsDto {
   deckSize?: number;
 }
 
+class ManualFlashcardDto {
+  @IsString() @MaxLength(2000) front!: string;
+  @IsString() @MaxLength(2000) back!: string;
+  @IsOptional() @IsString() folderId?: string;
+}
+
 interface FlashcardCitationDto {
   chunkId: string;
   docId: string;
@@ -75,6 +85,10 @@ export class FlashcardsController {
     private readonly prisma: PrismaService,
     private readonly cache: ArtifactCacheService,
     private readonly budget: BudgetService,
+    private readonly srs: SrsService,
+    private readonly courses: CoursesService,
+    private readonly shared: SharedFoldersService,
+    private readonly streaks: StreaksService,
   ) {}
 
   @Post('flashcards/generate')
@@ -117,12 +131,14 @@ export class FlashcardsController {
     // deck under the per-tenant "Inbox" course but still search broadly.
     const retrievalCourseId = isUuid(dto.courseId) ? dto.courseId : null;
     const retrievalFolderId = isUuid(dto.folderId) ? dto.folderId : null;
+    const allowedFolderIds = await this.shared.accessibleFolderIds(user.userId);
     const body = {
       tenant_id: user.tenantId,
       user_id: user.userId,
       course_id: retrievalCourseId,
       folder_id: retrievalFolderId,
       ...(dto.chapters && dto.chapters.length > 0 ? { chapters: dto.chapters } : {}),
+      ...(allowedFolderIds.length > 0 ? { allowed_folder_ids: allowedFolderIds } : {}),
       query: dto.query ?? '',
       deck_size: dto.deckSize ?? 12,
     };
@@ -249,33 +265,116 @@ export class FlashcardsController {
     };
   }
 
-  // Dev convenience: an upload with no explicit courseId still needs a row
-  // to associate the deck with, so we lazily create a single "Inbox" course
-  // per tenant.
   private async ensureCourse(
     tenantId: string,
     userId: string,
     explicitCourseId?: string,
   ): Promise<string> {
-    if (isUuid(explicitCourseId)) {
-      const existing = await this.prisma.course.findFirst({
-        where: { id: explicitCourseId, tenantId },
-      });
-      if (existing) return existing.id;
-    }
-    const inboxId = DEMO_COURSE_ID;
-    const inbox = await this.prisma.course.findUnique({ where: { id: inboxId } });
-    if (inbox) return inbox.id;
-    await this.prisma.course.create({
-      data: {
-        id: inboxId,
-        tenantId,
-        title: 'Inbox',
-      },
-    });
-    // Touch `userId` so the linter doesn't flag the unused param; user
-    // identity is enforced by tenantId scoping elsewhere.
+    // Userid touched here so dependents don't have to thread it through;
+    // tenant scoping lives in CoursesService.
     void userId;
-    return inboxId;
+    return this.courses.ensureForTenant(tenantId, explicitCourseId);
+  }
+
+  // ── Manual save (Ask → flashcard from selection) ─────────────────────────
+
+  @Post('flashcards/manual')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Save a hand-crafted flashcard (typically from a "highlight → flashcard" selection). Appends to a per-folder "Saved" deck, creating it if needed.',
+  })
+  async manualSave(
+    @CurrentUser() user: AuthContext,
+    @Body() dto: ManualFlashcardDto,
+  ): Promise<{ flashcardId: string; deckId: string }> {
+    const front = dto.front.trim();
+    const back = dto.back.trim();
+    if (front.length === 0 || back.length === 0) {
+      throw new ProblemException({
+        status: 400,
+        code: 'flashcards.invalid',
+        title: 'Front and back are required',
+      });
+    }
+    // Personal-flow artifacts persist to the per-tenant Inbox course
+    // (same convention as the generator). The folder context is for the
+    // deck title only — there's no hard folder→course mapping yet, so we
+    // group "Saved" decks per folder by suffixing the deck title.
+    const courseId = await this.ensureCourse(user.tenantId, user.userId);
+    const folderName = dto.folderId && isUuid(dto.folderId)
+      ? await this.folderName(user.tenantId, dto.folderId)
+      : null;
+    const deckTitle = folderName ? `Saved · ${folderName}` : 'Saved cards';
+
+    let deck = await this.prisma.flashcardDeck.findFirst({
+      where: { courseId, title: deckTitle, deletedAt: null },
+    });
+    if (!deck) {
+      deck = await this.prisma.flashcardDeck.create({
+        data: { courseId, title: deckTitle },
+      });
+    }
+    const card = await this.prisma.flashcard.create({
+      data: { deckId: deck.id, front, back, citationCount: 0 },
+    });
+    return { flashcardId: card.id, deckId: deck.id };
+  }
+
+  private async folderName(tenantId: string, folderId: string): Promise<string | null> {
+    const folder = await this.prisma.folder.findFirst({
+      where: { id: folderId, tenantId },
+      select: { name: true },
+    });
+    return folder?.name ?? null;
+  }
+
+  // ── SRS (spaced repetition) ──────────────────────────────────────────────
+
+  @Get('flashcards/due')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'List flashcards ready for review now (mix of due-reviews and untouched new cards).',
+  })
+  async due(
+    @CurrentUser() user: AuthContext,
+    @Query('limit') limitParam = '20',
+  ) {
+    const limit = Math.min(100, Math.max(1, Number.parseInt(limitParam, 10) || 20));
+    const cards = await this.srs.dueCards(user.tenantId, user.userId, limit);
+    return { cards };
+  }
+
+  @Get('flashcards/review-stats')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Counts: due now / today / this week, total, reviewed today.' })
+  async reviewStats(@CurrentUser() user: AuthContext) {
+    return this.srs.stats(user.tenantId, user.userId);
+  }
+
+  @Post('flashcards/:id/review')
+  @HttpCode(200)
+  @ApiOperation({
+    summary:
+      'Record an SM-2 review answer (quality 0..5). Returns the new schedule for the card.',
+  })
+  async review(
+    @CurrentUser() user: AuthContext,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: { quality: number },
+  ) {
+    if (typeof body?.quality !== 'number') {
+      throw new ProblemException({
+        status: 400,
+        code: 'srs.missing-quality',
+        title: 'Missing review quality (0..5)',
+      });
+    }
+    const result = await this.srs.review(user.tenantId, user.userId, id, body.quality);
+    // Streak credit on every review. Idempotent per-day; subsequent
+    // reviews same day are no-ops at the streak layer.
+    void this.streaks.recordActivity(user.userId).catch(() => undefined);
+    return result;
   }
 }

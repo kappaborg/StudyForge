@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { BudgetModule } from './budget/budget.module';
 import { ByokModule } from './byok/byok.module';
 import { ChatModule } from './chat/chat.module';
+import { ChunksModule } from './chunks/chunks.module';
 import { CommonModule } from './common/common.module';
 import { ConceptsModule } from './concepts/concepts.module';
 import { DiagramsModule } from './diagrams/diagrams.module';
@@ -25,7 +26,9 @@ import { ProgressModule } from './progress/progress.module';
 import { QuizzesModule } from './quizzes/quizzes.module';
 import { RoadmapsModule } from './roadmaps/roadmaps.module';
 import { SearchModule } from './search/search.module';
+import { SharedFoldersModule } from './shared-folders/shared-folders.module';
 import { SharingModule } from './sharing/sharing.module';
+import { StreaksModule } from './streaks/streaks.module';
 import { UploadsModule } from './uploads/uploads.module';
 
 @Module({
@@ -39,6 +42,7 @@ import { UploadsModule } from './uploads/uploads.module';
     UploadsModule,
     ByokModule,
     DocumentsModule,
+    ChunksModule,
     ChatModule,
     FlashcardsModule,
     QuizzesModule,
@@ -58,6 +62,8 @@ import { UploadsModule } from './uploads/uploads.module';
     FoldersModule,
     LocalModelsModule,
     ExamScopesModule,
+    SharedFoldersModule,
+    StreaksModule,
   ],
 })
 export class AppModule {}
