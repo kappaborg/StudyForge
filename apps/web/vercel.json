@@ -4,6 +4,5 @@
   "buildCommand": "cd ../.. && pnpm --filter web build",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile=false",
   "outputDirectory": ".next",
-  "regions": ["iad1"],
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD apps/web packages pnpm-lock.yaml package.json"
+  "regions": ["iad1"]
 }
