@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { GoogleSignInButton } from '../../components/google-sign-in-button';
 import { authClient } from '../../lib/auth-client';
 
@@ -12,7 +12,22 @@ import { authClient } from '../../lib/auth-client';
 // it. Flip via `NEXT_PUBLIC_AUTH_MODE=production` in Vercel env.
 const isProd = process.env['NEXT_PUBLIC_AUTH_MODE'] === 'production';
 
+/**
+ * Next 15 requires every ``useSearchParams()`` consumer to sit inside a
+ * Suspense boundary so the build's static-export step doesn't bail when
+ * the search params can't be resolved at prerender time. The page-level
+ * default export just provides that boundary; the actual form logic
+ * lives in ``LoginPageInner``.
+ */
 export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageInner />
+    </Suspense>
+  );
+}
+
+function LoginPageInner() {
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get('next') ?? '/dashboard';

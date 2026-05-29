@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { GoogleSignInButton } from '../../components/google-sign-in-button';
 import { track } from '../../lib/analytics';
 import { authClient } from '../../lib/auth-client';
@@ -11,7 +11,20 @@ import { authClient } from '../../lib/auth-client';
 // Hide the email/password form so users always go through OAuth.
 const isProd = process.env['NEXT_PUBLIC_AUTH_MODE'] === 'production';
 
+/**
+ * Suspense boundary required by Next 15's build-time check for
+ * ``useSearchParams()`` consumers. Without this the static prerender
+ * step bails on /signup.
+ */
 export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupPageInner />
+    </Suspense>
+  );
+}
+
+function SignupPageInner() {
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get('next') ?? '/dashboard';
