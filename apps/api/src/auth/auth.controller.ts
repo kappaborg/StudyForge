@@ -287,12 +287,16 @@ export class AuthController {
 }
 
 function setSessionCookie(reply: FastifyReply, session: IssuedSession): void {
-  const secure = process.env['NODE_ENV'] === 'production';
+  const isProd = process.env['NODE_ENV'] === 'production';
+  // Cross-origin cookie needs SameSite=None in production so the FE on
+  // Vercel can read it back when fetching the API on Render. SameSite=None
+  // requires Secure (TLS) which we already enforce in prod. Dev keeps Lax
+  // so the cookie still works on plain localhost (Secure isn't set there).
   reply.setCookie(SESSION_COOKIE_NAME, session.token, {
     path: '/',
     httpOnly: true,
-    sameSite: 'lax',
-    secure,
+    sameSite: isProd ? 'none' : 'lax',
+    secure: isProd,
     expires: session.expiresAt,
   });
 }
