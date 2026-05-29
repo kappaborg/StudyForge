@@ -4,6 +4,14 @@
 generator client {
   provider        = "prisma-client-js"
   previewFeatures = ["postgresqlExtensions"]
+  // ``native`` covers local dev on macOS / linux-glibc. The two debian
+  // targets cover the Docker runtimes used by Render + most managed
+  // hosts — Bookworm-based images ship OpenSSL 3.x, older Buster /
+  // Bullseye-based ones ship 1.1.x. Without an explicit list Prisma
+  // detects the build-stage OS only, which on a slim image without
+  // openssl installed falls back to 1.1.x and then can't load on a
+  // 3.x runtime.
+  binaryTargets   = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
 }
 
 datasource db {
