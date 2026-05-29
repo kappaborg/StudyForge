@@ -137,7 +137,11 @@ class Orchestrator:
             result = await agent.run(validated_input)
         except Exception as exc:
             step.state = StepState.failed
-            step.error = f"agent {agent.name}: {exc!r}"
+            # ``str(exc)`` keeps the original message clean; ``repr`` wraps
+            # it in ``ExcClass('...')`` which leaks through to the upload UI
+            # as garbled text. The API gateway strips the ``agent <name>: ``
+            # prefix when surfacing this to the FE.
+            step.error = f"agent {agent.name}: {exc}"
             step.completed_at = _now_iso()
             raise StepFailure(step.error) from exc
 

@@ -725,11 +725,17 @@ export class UploadsService {
       error?: string;
     };
     if (json.state !== 'succeeded') {
+      // The worker prefixes errors with ``agent <name>: `` for log triage.
+      // Strip it before the FE so the upload toast shows the human-readable
+      // message (e.g. "Audio transcription is disabled on the public demo")
+      // rather than the operator-facing breadcrumb.
+      const rawError = json.error ?? json.state;
+      const friendly = rawError.replace(/^agent [\w.-]+: /, '');
       throw new ProblemException({
         status: 502,
         code: 'upload.ingest-failed',
         title: 'Ingest pipeline did not succeed',
-        detail: json.error ?? json.state,
+        detail: friendly,
       });
     }
     return {

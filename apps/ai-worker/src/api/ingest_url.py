@@ -88,6 +88,25 @@ class IngestTextResponse(BaseModel):
     text_chars: int
 
 
+class EmbedDocumentRequest(BaseModel):
+    """Fill embeddings for chunks of an already-ingested document. Used by
+    the API's demo-seeder path that writes chunks directly via Prisma and
+    needs them to become RAG-retrievable."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    tenant_id: str
+    document_id: str
+
+
+class EmbedDocumentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    document_id: str
+    embedded_chunks: int
+    batches: int
+
+
 # ── YouTube helpers ─────────────────────────────────────────────────────────
 
 _YOUTUBE_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
@@ -346,6 +365,50 @@ def build_router(
             embedded_chunks=embed_outcome.chunks_embedded,
             title=req.title,
             text_chars=len(req.text),
+        )
+
+    @router.post("/embed-document", response_model=EmbedDocumentResponse)
+    async def embed_document(req: EmbedDocumentRequest) -> EmbedDocumentResponse:
+        """Fill embeddings for the latest version of an existing document.
+
+        Used by the API gateway after writing chunks via Prisma directly
+        (e.g. the demo seeder). Looks up the most recent
+        ``DocumentVersion`` for the given document — scoped to the tenant
+        so a misrouted call can't embed someone else's data — then
+        delegates to ``embed_pending_chunks``.
+        """
+        sql = """
+            SELECT v.id AS version_id
+              FROM "DocumentVersion" v
+              JOIN "Document" d ON d.id = v."documentId"
+             WHERE d.id = %(doc)s::uuid
+               AND d."tenantId" = %(tenant)s::uuid
+               AND d."deletedAt" IS NULL
+             ORDER BY v."versionNumber" DESC
+             LIMIT 1
+        """
+        async with pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, {"doc": req.document_id, "tenant": req.tenant_id})
+                row = await cur.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Document not found for tenant.")
+        version_id = str(row[0])
+        outcome = await embed_pending_chunks(
+            pool=pool,
+            embedder=embedder,
+            document_version_id=version_id,
+        )
+        log.info(
+            "ingest.embed_document doc=%s embedded=%d batches=%d",
+            req.document_id,
+            outcome.chunks_embedded,
+            outcome.batches,
+        )
+        return EmbedDocumentResponse(
+            document_id=req.document_id,
+            embedded_chunks=outcome.chunks_embedded,
+            batches=outcome.batches,
         )
 
     return router

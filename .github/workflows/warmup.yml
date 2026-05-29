@@ -1,0 +1,68 @@
+name: warmup
+
+# Pings the production API and worker every 14 minutes so Render's free
+# tier doesn't sleep them. Render sleeps services after 15 min of no
+# requests; a sleeping service costs the first visitor ~30 s on a white
+# screen, which makes the demo link look broken.
+#
+# Configure two repository secrets before this workflow does anything
+# useful:
+#   PROD_API_URL    e.g. https://studyforge-api.onrender.com
+#   PROD_WORKER_URL e.g. https://studyforge-worker.onrender.com
+#
+# If either secret is missing, the matching job is skipped — so this
+# file can land before the services exist without breaking CI.
+
+on:
+  schedule:
+    # Every 14 minutes. Cron precision is best-effort on GitHub Actions
+    # (it can drift by a few minutes); 14 keeps us comfortably under
+    # Render's 15-minute idle window even under drift.
+    - cron: '*/14 * * * *'
+  # Manual trigger from the Actions tab — useful right after deploying.
+  workflow_dispatch:
+
+# Don't queue overlapping runs if a previous warmup hangs on a cold
+# start. The next scheduled fire will retry.
+concurrency:
+  group: warmup
+  cancel-in-progress: true
+
+jobs:
+  ping-api:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health on the API
+        env:
+          URL: ${{ secrets.PROD_API_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "PROD_API_URL secret not set — skipping API warmup."
+            exit 0
+          fi
+          # 60 s timeout covers a worst-case cold start. ``--retry`` rides
+          # out transient 502s while Render boots the container.
+          curl --fail --silent --show-error \
+               --max-time 60 \
+               --retry 3 --retry-delay 5 --retry-connrefused \
+               "$URL/health"
+          echo
+          echo "✓ API warm"
+
+  ping-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health on the worker
+        env:
+          URL: ${{ secrets.PROD_WORKER_URL }}
+        run: |
+          if [ -z "$URL" ]; then
+            echo "PROD_WORKER_URL secret not set — skipping worker warmup."
+            exit 0
+          fi
+          curl --fail --silent --show-error \
+               --max-time 60 \
+               --retry 3 --retry-delay 5 --retry-connrefused \
+               "$URL/health"
+          echo
+          echo "✓ Worker warm"

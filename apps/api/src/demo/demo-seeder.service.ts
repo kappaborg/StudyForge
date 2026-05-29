@@ -45,15 +45,48 @@ export class DemoSeederService {
       const courseId = await this.courses.ensureInbox(tenantId);
       const folderId = await this.folders.inboxFolderId(tenantId);
 
-      await this.seedDocument(tenantId, userId, courseId, folderId);
+      const docId = await this.seedDocument(tenantId, userId, courseId, folderId);
       await this.seedFlashcards(courseId);
       await this.seedQuiz(courseId);
       this.log.log(
         `demo.seeded tenant=${tenantId.slice(0, 8)} (doc + deck + quiz)`,
       );
+      // Fire-and-forget embedding so the tutor can answer questions about
+      // the demo content from session one. Without this the system prompt's
+      // "answer ONLY from the provided documents" rule produces a confusing
+      // "I could not find this" on day-1 questions about photosynthesis.
+      void this.embedDemoDocument(tenantId, docId);
     } catch (err) {
       // Never crash the sign-in flow on seed failure.
       this.log.warn(`demo.seed_failed tenant=${tenantId.slice(0, 8)} err=${err}`);
+    }
+  }
+
+  /**
+   * Asynchronously calls the worker to embed the demo document. Errors are
+   * swallowed — if the worker is sleeping (cold-start on Render free) the
+   * embedding lands a moment later or, worst case, the demo doc is
+   * retrieval-unfindable but the flashcards and quiz still work.
+   */
+  private async embedDemoDocument(tenantId: string, documentId: string): Promise<void> {
+    const workerUrl = process.env['AI_WORKER_URL'] ?? 'http://localhost:8001';
+    try {
+      const res = await fetch(`${workerUrl}/v1/ingest/embed-document`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ tenant_id: tenantId, document_id: documentId }),
+      });
+      if (!res.ok) {
+        const text = (await res.text()).slice(0, 200);
+        this.log.warn(`demo.embed_failed status=${res.status} body=${text}`);
+        return;
+      }
+      const json = (await res.json()) as { embedded_chunks?: number };
+      this.log.log(
+        `demo.embedded doc=${documentId.slice(0, 8)} chunks=${json.embedded_chunks ?? '?'}`,
+      );
+    } catch (err) {
+      this.log.warn(`demo.embed_error doc=${documentId.slice(0, 8)} err=${err}`);
     }
   }
 
@@ -64,7 +97,7 @@ export class DemoSeederService {
     userId: string,
     courseId: string,
     folderId: string,
-  ): Promise<void> {
+  ): Promise<string> {
     const bodyText = DEMO_BODY;
     const contentHash = sha256(bodyText);
     const batch = await this.prisma.uploadBatch.create({
@@ -120,6 +153,7 @@ export class DemoSeederService {
       };
     });
     await this.prisma.chunk.createMany({ data: chunkRows });
+    return doc.id;
   }
 
   // ── flashcards ──────────────────────────────────────────────────────────
