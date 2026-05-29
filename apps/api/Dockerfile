@@ -29,7 +29,6 @@ RUN pnpm --filter api exec prisma generate \
 
 # ── runtime ─────────────────────────────────────────────────────────────────
 FROM node:${NODE_VERSION}-bookworm-slim AS runtime
-WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=3001
@@ -41,11 +40,19 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
-# Compiled bundle + node_modules from the build stage.
-COPY --from=build /repo/apps/api/dist ./dist
-COPY --from=build /repo/apps/api/node_modules ./node_modules
-COPY --from=build /repo/node_modules /repo/node_modules
-COPY --from=build /repo/apps/api/prisma ./prisma
+# Copy the entire built monorepo. pnpm uses a symlinked node_modules
+# layout where ``apps/api/node_modules/*`` are symlinks pointing into
+# ``node_modules/.pnpm/<package>/node_modules/<package>`` at the repo
+# root. Partial copies break those symlink targets at runtime (every
+# ``require()`` fails with ENOENT), so we ship the whole tree and
+# accept the slightly larger image. Free-tier image ceiling on Render
+# is generous; the bottleneck is RAM, not disk.
+WORKDIR /repo
+COPY --from=build /repo /repo
+
+# Run the API from its workspace directory so ``./prisma`` and the
+# symlinked deps resolve the same way Prisma + Nest expect locally.
+WORKDIR /repo/apps/api
 
 EXPOSE 3001
 
