@@ -4,5 +4,15 @@
   "buildCommand": "cd ../.. && pnpm --filter web build",
   "installCommand": "cd ../.. && pnpm install --frozen-lockfile=false",
   "outputDirectory": ".next",
-  "regions": ["iad1"]
+  "regions": ["iad1"],
+  "rewrites": [
+    {
+      "source": "/v1/:path*",
+      "destination": "https://studyforge-y340.onrender.com/v1/:path*"
+    },
+    {
+      "source": "/health",
+      "destination": "https://studyforge-y340.onrender.com/health"
+    }
+  ]
 }
