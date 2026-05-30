@@ -569,8 +569,12 @@ model Chunk {
   charEnd           Int
   // Plain text, used for BM25 and tutor context.
   content           String
-  // BGE-M3 dense embedding (1024 dims). Optional because some agents may pre-index lazily.
-  embedding         Unsupported("vector(1024)")?
+  // BGE-small dense embedding (384 dims). Optional because some agents may
+  // pre-index lazily. Changed from vector(1024) when the worker switched
+  // from bge-large to bge-small for the Render-free deploy — keep this in
+  // sync with apps/ai-worker/src/rag/embedder.py:EMBEDDING_DIM and ALTER
+  // the column in production whenever the model dimension changes.
+  embedding         Unsupported("vector(384)")?
   // tsvector populated by trigger for BM25-style queries.
   tsv               Unsupported("tsvector")?
   // Free-form modality details: language, code language, OCR confidence, etc.

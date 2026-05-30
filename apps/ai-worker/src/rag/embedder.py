@@ -21,7 +21,12 @@ import hashlib
 import logging
 import math
 
-EMBEDDING_DIM = 1024
+# bge-small-en-v1.5 outputs 384-dim vectors. The original schema used
+# vector(1024) to match bge-large; on the Render-free deploy we don't
+# have RAM or disk for the large model, so the column was migrated to
+# vector(384) alongside this constant. Don't change without a matching
+# ALTER COLUMN — pgvector enforces dimension at insert time.
+EMBEDDING_DIM = 384
 
 log = logging.getLogger(__name__)
 
@@ -116,20 +121,27 @@ class BgeM3Embedder:
 
 
 class FastEmbedEmbedder:
-    """ONNX-backed bge-large-en-v1.5 via ``fastembed`` — 1024-dim,
-    normalised, English-only. Much lighter than ``sentence-transformers``
-    (no torch dep, ~250 MB runtime instead of ~2 GB) so the self-host path
-    stays tractable.
+    """ONNX-backed embeddings via ``fastembed``. Defaults to
+    ``BAAI/bge-small-en-v1.5`` (384-dim, ~133 MB on disk, ~200 MB
+    runtime RAM) — sized for the Render-free deploy. Override via
+    ``FASTEMBED_MODEL`` if you have more headroom.
 
-    The model file is ~1.3 GB and downloads on first use; subsequent runs
-    pull it from the local cache. We chose ``bge-large-en-v1.5`` over
-    BGE-M3 to match the existing 1024-dim ``vector(1024)`` schema without
-    a column-type migration.
+    Render's ``/tmp`` is wiped between container restarts, so the
+    Dockerfile pre-downloads the model into the image at build time
+    via ``download_model.py``. That avoids the "first request times
+    out fetching a 100 MB ONNX file" failure mode on cold start.
     """
 
     dim = EMBEDDING_DIM
 
-    def __init__(self, model_name: str = "BAAI/bge-large-en-v1.5") -> None:
+    def __init__(self, model_name: str | None = None) -> None:
+        import os
+
+        model_name = (
+            model_name
+            or os.getenv("FASTEMBED_MODEL")
+            or "BAAI/bge-small-en-v1.5"
+        )
         self._model_name = model_name
         self._model: object | None = None
 

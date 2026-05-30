@@ -29,10 +29,27 @@ COPY apps/ai-worker/pyproject.toml ./
 # a separate pyproject for prod.
 RUN uv pip install --system --no-cache .
 
+# ── pre-download the fastembed model ────────────────────────────────────────
+# Render's ``/tmp`` is wiped between container restarts and on cold start
+# from scratch — so the worker would otherwise need to download the
+# embedding ONNX (~133 MB) on its first request, which takes long enough
+# to time out Render's gateway. Baking the model into the image makes
+# embeddings work on the very first request after a wake-up.
+#
+# Default model is overridden via ``FASTEMBED_MODEL`` env if set.
+FROM deps AS modelcache
+ENV FASTEMBED_CACHE_PATH=/opt/fastembed_cache \
+    FASTEMBED_MODEL=BAAI/bge-small-en-v1.5
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding(model_name='${FASTEMBED_MODEL}', cache_dir='${FASTEMBED_CACHE_PATH}')"
+
 # ── runtime ─────────────────────────────────────────────────────────────────
 FROM deps AS runtime
 WORKDIR /app
 COPY apps/ai-worker/src ./src
+
+# Bring the prefetched model + tell fastembed where to find it.
+COPY --from=modelcache /opt/fastembed_cache /opt/fastembed_cache
+ENV FASTEMBED_CACHE_PATH=/opt/fastembed_cache
 
 # Render injects $PORT. Honour it; default to 8001 for local docker run.
 ENV PORT=8001 \
