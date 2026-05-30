@@ -11,6 +11,7 @@ clause filters NULL rows).
 from __future__ import annotations
 
 import logging
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -22,7 +23,13 @@ from .retriever import Embedder
 
 log = logging.getLogger(__name__)
 
-DEFAULT_BATCH_SIZE = 32
+# Embedding batch size dominates peak worker memory: each batch keeps
+# the input text array, an intermediate tensor stack, and the output
+# vectors in RAM simultaneously. 32 (fastembed's library default) blew
+# the 512 MB Render free-tier worker on multi-PPTX ingest. 8 keeps the
+# peak around 250–300 MB while the same total throughput holds (4×
+# the batches, each ~4× faster, same wall-clock).
+DEFAULT_BATCH_SIZE = int(os.environ.get("EMBED_BATCH_SIZE", "8"))
 
 
 @dataclass(frozen=True)

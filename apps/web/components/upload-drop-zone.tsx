@@ -48,6 +48,10 @@ const DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
 const DEV_USER_EMAIL = 'dev@studyforge.local';
 
 const MAX_CONCURRENCY = 3;
+// Mirrors apps/api/src/uploads/uploads.service.ts:FREE_TIER_BYTE_LIMIT.
+// Kept identical here so the FE rejects oversize files before they hit
+// the upload init call.
+const MAX_FREE_TIER_BYTES = 5 * 1024 * 1024;
 // Files at or above this size go through S3 multipart. Smaller files
 // stay on the single-shot PUT path — multipart has overhead (extra
 // init call, per-part signing) that's pointless on a 200 KB PDF.
@@ -237,6 +241,24 @@ export function UploadDropZone({ folderId }: { folderId?: string | null } = {}) 
         });
         continue;
       }
+      // Mirror the API's free-tier ceiling client-side so users see the
+      // friendly message immediately instead of after a part has uploaded.
+      // Kept slightly under the server limit so a borderline file rounds
+      // down to "fits" rather than fails on the server.
+      if (file.size > MAX_FREE_TIER_BYTES) {
+        const sizeMb = (file.size / 1024 / 1024).toFixed(1);
+        additions.push({
+          id: localId(),
+          file,
+          stage: {
+            kind: 'error',
+            message:
+              `File is ${sizeMb} MB. Public demo caps uploads at 5 MB per file. ` +
+              `Try a smaller PDF or split a long slide deck.`,
+          },
+        });
+        continue;
+      }
       additions.push({ id: localId(), file, stage: { kind: 'queued' } });
     }
     setJobs((prev) => [...prev, ...additions]);
@@ -294,7 +316,7 @@ export function UploadDropZone({ folderId }: { folderId?: string | null } = {}) 
           Drop PDFs / slides / notes / audio / screenshots here, or click to choose
         </p>
         <p className="mt-1 text-xs text-muted-foreground">
-          Multiple files OK · audio transcribed · images scanned for text · up to {MAX_CONCURRENCY} at once
+          Public demo · 5 MB max per file · {MAX_CONCURRENCY} at once · images scanned for text
         </p>
       </label>
 

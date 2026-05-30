@@ -19,7 +19,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SearchService } from '../search/search.service';
 import type { UploadInitDto } from './dto/upload-init.dto';
 
-const FREE_TIER_BYTE_LIMIT = 1 * 1024 * 1024 * 1024; // 1 GB
+// Hard upload ceiling for the public demo. 5 MB comfortably fits a
+// 30-page text PDF or a small slide deck — enough for first-touch
+// exploration. Files past this threshold blow the embed worker's
+// 512 MB RAM budget on the free Render tier. Override per deploy
+// with the ``UPLOAD_MAX_BYTES`` env var when running on a paid
+// instance with more headroom.
+const FREE_TIER_BYTE_LIMIT =
+  Number(process.env['UPLOAD_MAX_BYTES']) || 5 * 1024 * 1024; // 5 MB default
 
 @Injectable()
 export class UploadsService {
@@ -80,11 +87,15 @@ export class UploadsService {
     s3Key: string;
   }> {
     if (dto.sizeBytes > FREE_TIER_BYTE_LIMIT) {
+      const mb = (FREE_TIER_BYTE_LIMIT / 1024 / 1024).toFixed(1);
+      const yourMb = (dto.sizeBytes / 1024 / 1024).toFixed(1);
       throw new ProblemException({
         status: 413,
         code: 'upload.size-exceeded',
-        title: 'Upload exceeds the free-tier byte limit',
-        detail: `Requested ${dto.sizeBytes} bytes; free-tier ceiling is ${FREE_TIER_BYTE_LIMIT}.`,
+        title: 'File is larger than the public demo limit',
+        detail:
+          `This file is ${yourMb} MB; the public demo caps uploads at ${mb} MB per file. ` +
+          `Try a smaller PDF or split a long slide deck. For larger files, self-host or upgrade to a paid plan.`,
         fields: [{ name: 'sizeBytes', reason: `max-${FREE_TIER_BYTE_LIMIT}` }],
       });
     }
