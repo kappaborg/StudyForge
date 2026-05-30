@@ -17,8 +17,14 @@ import {
   setAccessToken,
 } from './auth-store';
 
+// Mirrors lib/dev-fetch.ts — empty in production so calls flow through
+// Vercel's same-origin rewrite and the session cookie travels with them.
+// Cross-site direct calls to the Render URL would 401 because the cookie
+// is on the Vercel domain.
 const API_BASE =
-  process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:3001';
+  process.env['NEXT_PUBLIC_AUTH_MODE'] === 'production'
+    ? ''
+    : (process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:3001');
 
 const STATE_CHANGING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 

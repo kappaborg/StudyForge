@@ -32,8 +32,16 @@ interface UploadJob {
   stage: JobStage;
 }
 
+// Matches the canonical API_BASE in lib/dev-fetch.ts. In production
+// the FE goes through Vercel's edge rewrites so requests are
+// same-origin from the browser's perspective and the session cookie
+// (which lives on the Vercel domain) is sent. Calling the Render URL
+// directly in production lands the cookie in cross-site territory
+// and triggers 401 "Not signed in" on every upload init.
 const API_BASE =
-  process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:3001';
+  process.env['NEXT_PUBLIC_AUTH_MODE'] === 'production'
+    ? ''
+    : (process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:3001');
 
 const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const DEV_USER_ID = '22222222-2222-2222-2222-222222222222';
