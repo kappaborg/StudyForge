@@ -15,10 +15,11 @@ name: warmup
 
 on:
   schedule:
-    # Every 14 minutes. Cron precision is best-effort on GitHub Actions
-    # (it can drift by a few minutes); 14 keeps us comfortably under
-    # Render's 15-minute idle window even under drift.
-    - cron: '*/14 * * * *'
+    # Every 10 minutes. GitHub Actions free-tier cron can drift by
+    # 5+ minutes between fires, so 14 (the theoretical minimum to stay
+    # under Render's 15-minute idle window) leaves no margin and
+    # produces the occasional 30 s cold-start hit. 10 absorbs the drift.
+    - cron: '*/10 * * * *'
   # Manual trigger from the Actions tab — useful right after deploying.
   workflow_dispatch:
 

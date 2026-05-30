@@ -232,12 +232,26 @@ export class ChatController {
       body: JSON.stringify(body),
     });
     if (!upstream.ok || !upstream.body) {
-      const detail = (await upstream.text()).slice(0, 400);
+      // The worker can return an HTML 502 page when Render's gateway
+      // gives up on a cold-starting service. Don't leak that to the
+      // user — the raw HTML is meaningless in their chat UI and looks
+      // like the app is broken. Instead surface a short, actionable
+      // message; the operator can still find the upstream details by
+      // checking Render logs for the failed request.
+      const upstreamSnippet = (await upstream.text().catch(() => ''))
+        .slice(0, 200);
+      const looksLikeColdStart =
+        upstream.status === 502 ||
+        upstream.status === 503 ||
+        upstream.status === 504 ||
+        /<html|render/i.test(upstreamSnippet);
       throw new ProblemException({
         status: 502,
         code: 'tutor.stream-failed',
-        title: 'Tutor stream failed',
-        detail,
+        title: 'Tutor temporarily unavailable',
+        detail: looksLikeColdStart
+          ? 'The AI worker is waking up from idle. Retry in 20–30 seconds.'
+          : `Worker returned ${upstream.status}: ${upstreamSnippet.slice(0, 120)}`,
       });
     }
     reply.raw.setHeader('content-type', 'text/event-stream');
