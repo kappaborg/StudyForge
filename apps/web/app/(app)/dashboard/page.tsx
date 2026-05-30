@@ -33,7 +33,7 @@ export default function DashboardPage() {
           </p>
         </Link>
         <Link
-          href="/courses/demo"
+          href="/upload"
           className="rounded-lg border border-border p-5 hover:bg-accent"
         >
           <h2 className="font-medium">Open workspace</h2>

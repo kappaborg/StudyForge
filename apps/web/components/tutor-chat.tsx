@@ -13,6 +13,11 @@ import { CitationLink } from './citation-link';
 import { VoiceInputButton } from './voice-input-button';
 import { VoiceOutputButton } from './voice-output-button';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function isUuid(value: string | null | undefined): value is string {
+  return typeof value === 'string' && UUID_RE.test(value);
+}
+
 interface SessionRow {
   id: string;
   title: string | null;
@@ -112,15 +117,23 @@ export function TutorChat({ folderId, courseId }: Props) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
+  // The course/folder id pulled from the URL can be a literal sentinel
+  // (e.g. ``/courses/demo``) when the user came in via the dashboard's
+  // "Open workspace" card. The API validates these as @IsUUID() and
+  // would 400 a bad value, so we drop anything that isn't a UUID
+  // before stitching the request body.
+  const safeFolderId = isUuid(folderId) ? folderId : undefined;
+  const safeCourseId = isUuid(courseId) ? courseId : undefined;
+
   const ensureSession = useCallback(async (): Promise<string> => {
     if (activeId) return activeId;
     const created = await apiPost<{ id: string }>('/v1/chat/sessions', {
-      ...(courseId ? { courseId } : {}),
+      ...(safeCourseId ? { courseId: safeCourseId } : {}),
     });
     setActiveId(created.id);
     void loadSessions();
     return created.id;
-  }, [activeId, courseId, loadSessions]);
+  }, [activeId, safeCourseId, loadSessions]);
 
   const send = useCallback(async () => {
     const text = input.trim();
@@ -151,8 +164,8 @@ export function TutorChat({ folderId, courseId }: Props) {
         body: JSON.stringify({
           query: text,
           sessionId,
-          ...(folderId ? { folderId } : {}),
-          ...(courseId ? { courseId } : {}),
+          ...(safeFolderId ? { folderId: safeFolderId } : {}),
+          ...(safeCourseId ? { courseId: safeCourseId } : {}),
         }),
         credentials: 'include',
       });
