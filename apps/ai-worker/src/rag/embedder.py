@@ -154,11 +154,27 @@ class FastEmbedEmbedder:
                     "FastEmbedEmbedder requires `fastembed`. "
                     "Install with: uv pip install fastembed"
                 ) from exc
-            log.info(
-                "loading fastembed (%s) — model weights pulled on first call",
-                self._model_name,
+            import os
+
+            # Always pass cache_dir explicitly. fastembed's default is
+            # ``/tmp/fastembed_cache`` which is ephemeral on Render. The
+            # Dockerfile pre-downloads the model to ``/opt/fastembed_cache``
+            # and exports ``FASTEMBED_CACHE_PATH`` so that location is used.
+            # Without this, fastembed re-downloads ~133 MB on first call,
+            # which on a 512 MB container co-resident with an active ingest
+            # job tips the process into OOM.
+            cache_dir = os.getenv("FASTEMBED_CACHE_PATH") or os.getenv(
+                "FASTEMBED_CACHE_DIR"
             )
-            self._model = TextEmbedding(model_name=self._model_name)
+            log.info(
+                "loading fastembed (%s) — cache=%s",
+                self._model_name,
+                cache_dir or "default",
+            )
+            kwargs: dict[str, str] = {"model_name": self._model_name}
+            if cache_dir:
+                kwargs["cache_dir"] = cache_dir
+            self._model = TextEmbedding(**kwargs)
         return self._model
 
     async def embed_query(self, text: str) -> list[float]:  # pragma: no cover
