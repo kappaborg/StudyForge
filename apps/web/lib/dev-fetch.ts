@@ -4,8 +4,22 @@
  * of the codebase keeps working.
  */
 
+// In production we route every API call through Vercel's edge
+// rewrites (configured in next.config.mjs) so the request is
+// same-origin from the browser's point of view. That makes the
+// session cookie first-party on the Vercel domain — works in
+// Safari ITP, Chrome's third-party cookie blocker, and Firefox
+// without further fuss.
+//
+// Empty string makes the templated URL ``${API_BASE}/v1/...``
+// resolve to ``/v1/...`` (relative to the current origin).
+//
+// Local dev keeps the explicit ``http://localhost:3001`` so it
+// still works without standing up a proxy.
 export const API_BASE =
-  process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:3001';
+  process.env['NEXT_PUBLIC_AUTH_MODE'] === 'production'
+    ? ''
+    : (process.env['NEXT_PUBLIC_API_BASE_URL'] ?? 'http://localhost:3001');
 
 export const DEV_TENANT_ID = '11111111-1111-1111-1111-111111111111';
 export const DEV_USER_ID = '22222222-2222-2222-2222-222222222222';

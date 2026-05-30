@@ -66,6 +66,26 @@ const nextConfig = {
       },
     ];
   },
+  // Same-origin proxy so the browser never sees a cross-origin API call.
+  // Cross-site cookies are blocked by default in Safari (ITP) and by Chrome
+  // when third-party cookies are off, even with SameSite=None; Secure.
+  // Routing every API call through ``vercel.app/v1/*`` makes ``sf_session``
+  // a first-party cookie on the FE domain and works in every browser.
+  //
+  // Requires:
+  //   • ``NEXT_PUBLIC_API_BASE_URL`` set to the real Render API URL
+  //   • Google OAuth Authorized Redirect URI set to the Vercel domain
+  //     (the API ``GOOGLE_CALLBACK_URL`` env var follows the same value)
+  async rewrites() {
+    const apiBase = process.env['NEXT_PUBLIC_API_BASE_URL'];
+    if (!apiBase) return [];
+    return [
+      { source: '/v1/:path*', destination: `${apiBase}/v1/:path*` },
+      { source: '/health', destination: `${apiBase}/health` },
+      { source: '/docs', destination: `${apiBase}/docs` },
+      { source: '/docs/:path*', destination: `${apiBase}/docs/:path*` },
+    ];
+  },
 };
 
 export default nextConfig;
