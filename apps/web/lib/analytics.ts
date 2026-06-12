@@ -82,7 +82,14 @@ export interface EventPropsMap {
   'text.ingested': { documentId: string; chunkCount: number; source: 'extension' | 'web' };
   'multipart.part_failed': { partNumber: number; partCount: number; sizeBytes: number };
   'tutor.asked': { courseId: string | null; retrievedChunks: number; refusal: boolean };
-  'srs.reviewed': { flashcardId: string; quality: number; intervalDays: number };
+  'srs.reviewed': {
+    flashcardId: string;
+    quality: number;
+    /** Server-confirmed next interval, or -1 when the grade was
+     *  queued offline and will sync later. */
+    intervalDays: number;
+    queued?: boolean;
+  };
   'flashcards.generated': { courseId: string; deckSize: number; deckId: string };
   'quizzes.generated': { courseId: string; itemCount: number; quizId: string };
   'quizzes.submitted': { quizId: string; score: number; items: number };

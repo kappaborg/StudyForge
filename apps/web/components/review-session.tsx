@@ -5,9 +5,11 @@ import { useCallback, useEffect, useState } from 'react';
 import { track } from '../lib/analytics';
 import {
   fetchDueCards,
+  flushQueuedGrades,
   formatInterval,
   gradeCard,
   GRADES,
+  pendingGradeCount,
   type ReviewableCard,
   type ReviewResult,
 } from '../lib/srs-client';
@@ -49,13 +51,27 @@ export function ReviewSession() {
   });
   const [lastResult, setLastResult] = useState<{
     grade: string;
-    next: ReviewResult;
+    next: ReviewResult | null;
   } | null>(null);
+
+  // Offline-mode UI state — Phase 3 §10. Three signals the user cares about:
+  //   * ``fromCache``: cards came from IDB, not the network
+  //   * ``cachedAt``: when that cache was last refreshed
+  //   * ``pendingCount``: how many grades are queued waiting to sync
+  const [fromCache, setFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
+  const [pendingCount, setPendingCount] = useState(0);
+
+  const refreshPendingCount = useCallback(async () => {
+    setPendingCount(await pendingGradeCount());
+  }, []);
 
   const loadQueue = useCallback(async () => {
     try {
-      const cards = await fetchDueCards(20);
-      setQueue(cards);
+      const result = await fetchDueCards(20);
+      setQueue(result.cards);
+      setFromCache(result.fromCache);
+      setCachedAt(result.cachedAt);
       setRevealed(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load cards');
@@ -64,7 +80,22 @@ export function ReviewSession() {
 
   useEffect(() => {
     void loadQueue();
-  }, [loadQueue]);
+    void refreshPendingCount();
+  }, [loadQueue, refreshPendingCount]);
+
+  // Drain the offline grade queue when the browser tells us we're back
+  // online. Also a manual button below covers the case where the
+  // ``online`` event fires before the React tree has mounted.
+  useEffect(() => {
+    const onOnline = async () => {
+      const outcome = await flushQueuedGrades();
+      if (outcome.succeeded > 0 || outcome.failed > 0) {
+        await refreshPendingCount();
+      }
+    };
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [refreshPendingCount]);
 
   const current = queue?.[0];
 
@@ -73,13 +104,20 @@ export function ReviewSession() {
       if (!current || busy) return;
       setBusy(true);
       try {
-        const result = await gradeCard(current.id, quality);
+        const outcome = await gradeCard(current.id, quality);
         track('srs.reviewed', {
           flashcardId: current.id,
           quality,
-          intervalDays: result.intervalDays,
+          // ``intervalDays`` is -1 when the grade was queued offline so
+          // analytics' typed schema stays a number (sentinel value).
+          intervalDays: outcome.result?.intervalDays ?? -1,
+          queued: outcome.queued,
         });
-        setLastResult({ grade: key, next: result });
+        if (outcome.queued) {
+          // Offline path — refresh the pending count so the badge updates.
+          await refreshPendingCount();
+        }
+        setLastResult({ grade: key, next: outcome.result });
         setStats((s) => ({
           reviewed: s.reviewed + 1,
           again: s.again + (key === 'Again' ? 1 : 0),
@@ -103,7 +141,7 @@ export function ReviewSession() {
         setBusy(false);
       }
     },
-    [current, busy],
+    [current, busy, refreshPendingCount],
   );
 
   // Keyboard shortcuts: space to reveal, 1-4 to grade.
@@ -197,6 +235,15 @@ export function ReviewSession() {
 
   return (
     <main className="mx-auto flex max-w-2xl flex-col gap-6 px-3 py-6 sm:px-0 sm:py-10">
+      <OfflineStatusBar
+        fromCache={fromCache}
+        cachedAt={cachedAt}
+        pendingCount={pendingCount}
+        onManualSync={async () => {
+          await flushQueuedGrades();
+          await refreshPendingCount();
+        }}
+      />
       <header className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h1 className="text-base font-semibold tracking-tight sm:text-lg">Review · {current?.deckTitle}</h1>
@@ -283,12 +330,81 @@ export function ReviewSession() {
 
       {lastResult && (
         <p className="text-[11px] text-muted-foreground">
-          Last: {lastResult.grade} → next in {formatInterval(lastResult.next.intervalDays)}
-          {lastResult.next.lapsed && ' · lapse recorded'}
+          {lastResult.next === null ? (
+            <>Last: {lastResult.grade} → queued (will sync when online)</>
+          ) : (
+            <>
+              Last: {lastResult.grade} → next in{' '}
+              {formatInterval(lastResult.next.intervalDays)}
+              {lastResult.next.lapsed && ' · lapse recorded'}
+            </>
+          )}
         </p>
       )}
     </main>
   );
+}
+
+interface OfflineStatusBarProps {
+  fromCache: boolean;
+  cachedAt: number | null;
+  pendingCount: number;
+  onManualSync: () => Promise<void>;
+}
+
+/**
+ * Thin top-of-page banner that surfaces the offline review surface to
+ * the student. Nothing renders when the network is fresh AND no grades
+ * are queued — the common case. Otherwise we show the freshest piece of
+ * status: cached-queue notice + age, or queued-sync count + manual
+ * trigger button.
+ */
+function OfflineStatusBar({
+  fromCache,
+  cachedAt,
+  pendingCount,
+  onManualSync,
+}: OfflineStatusBarProps) {
+  if (!fromCache && pendingCount === 0) return null;
+  return (
+    <div
+      role="status"
+      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-amber-400/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:bg-amber-900/15 dark:text-amber-200"
+    >
+      <span>
+        {fromCache && cachedAt ? (
+          <>
+            Reviewing cached queue from {formatCacheAge(cachedAt)} ago — your
+            grades save locally and will sync when you're back online.
+          </>
+        ) : (
+          <>
+            {pendingCount} grade{pendingCount === 1 ? '' : 's'} queued — will
+            sync when you're back online.
+          </>
+        )}
+      </span>
+      {pendingCount > 0 && (
+        <button
+          type="button"
+          onClick={() => void onManualSync()}
+          className="rounded-md border border-amber-400/80 px-2 py-0.5 font-medium hover:bg-amber-100/80 dark:hover:bg-amber-900/30"
+        >
+          Sync now
+        </button>
+      )}
+    </div>
+  );
+}
+
+function formatCacheAge(cachedAt: number): string {
+  const elapsedMin = Math.max(0, Math.round((Date.now() - cachedAt) / 60_000));
+  if (elapsedMin < 1) return 'a moment';
+  if (elapsedMin < 60) return `${elapsedMin} min`;
+  const hours = Math.round(elapsedMin / 60);
+  if (hours < 24) return `${hours} hr`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'}`;
 }
 
 function SessionSummary({ stats }: { stats: SessionStats }) {
