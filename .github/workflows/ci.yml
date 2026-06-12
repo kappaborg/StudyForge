@@ -180,7 +180,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: 'pnpm'
+          # No ``cache: 'pnpm'`` here — the security job runs ``pnpm
+          # audit`` directly against the lockfile without an
+          # ``install`` step, so the Post Run cache save errors with
+          # "Path(s) specified in the action for caching do(es) not
+          # exist". Audit speed is dominated by the registry call,
+          # not by node_modules restore, so dropping the cache is
+          # essentially free.
 
       - name: pnpm audit (critical gate)
         # Today the gate fires only on ``critical``. Known highs are
