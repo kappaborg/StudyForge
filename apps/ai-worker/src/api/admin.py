@@ -7,8 +7,8 @@ from __future__ import annotations
 import logging
 
 from fastapi import APIRouter
-from pydantic import BaseModel, ConfigDict
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel, ConfigDict
 
 from ..rag.embed_writer import embed_pending_chunks
 from ..rag.retriever import Embedder
@@ -34,10 +34,9 @@ def build_router(*, pool: AsyncConnectionPool, embedder: Embedder) -> APIRouter:
         vectors from the old backend (e.g. StubEmbedder's hash output)
         and would land in a different vector space than fresh queries.
         """
-        async with pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute('UPDATE "Chunk" SET embedding = NULL')
-                wiped = cur.rowcount
+        async with pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute('UPDATE "Chunk" SET embedding = NULL')
+            wiped = cur.rowcount
         log.info("admin.reembed wiped=%d", wiped)
         outcome = await embed_pending_chunks(pool=pool, embedder=embedder)
         return ReembedResponse(

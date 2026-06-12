@@ -16,6 +16,8 @@ from typing import Any
 
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
+)
+from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
@@ -85,7 +87,7 @@ class RoadmapAgent:
 
         try:
             response = await self._call_llm(payload, retrieved_chunks)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("roadmap.llm_error fallback_to_stub err=%s", exc)
             return self._stub_response(payload, retrieved_chunks)
         milestones = self._parse_milestones(response.text, retrieved_chunks, payload.weeks)

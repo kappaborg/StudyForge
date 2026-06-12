@@ -7,6 +7,7 @@ swaps this class out — the orchestrator never imports a concrete store.
 
 from __future__ import annotations
 
+from datetime import UTC
 from typing import Protocol
 
 from ..agents.contracts import Run
@@ -39,10 +40,10 @@ class InMemoryRunStore(RunStore):
         self._by_key: dict[tuple[str, str], str] = {}
 
     async def upsert(self, run: Run) -> Run:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         run_dict = run.model_dump(mode="json")
-        run_dict["updated_at"] = datetime.now(timezone.utc).isoformat()
+        run_dict["updated_at"] = datetime.now(UTC).isoformat()
         updated = Run.model_validate(run_dict)
         self._by_id[updated.id] = updated
         self._by_key[(updated.kind, updated.idempotency_key)] = updated.id

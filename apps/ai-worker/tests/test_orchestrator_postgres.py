@@ -16,8 +16,8 @@ import pytest
 from psycopg_pool import AsyncConnectionPool
 
 from src.agents import AgentRegistry
-from src.agents.tutor import TutorAgent
 from src.agents.contracts import RunState, StepState
+from src.agents.tutor import TutorAgent
 from src.orchestrator import Orchestrator, PostgresRunStore
 from src.orchestrator.runner import StepSpec
 
@@ -53,11 +53,10 @@ async def store(pool: AsyncConnectionPool):
     s = PostgresRunStore(pool)
     yield s
     # Best-effort cleanup of test rows.
-    async with pool.connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                'DELETE FROM "Job" WHERE kind = %s', ("tutor.answer.v1",)
-            )
+    async with pool.connection() as conn, conn.cursor() as cur:
+        await cur.execute(
+            'DELETE FROM "Job" WHERE kind = %s', ("tutor.answer.v1",)
+        )
 
 
 def _registry() -> AgentRegistry:

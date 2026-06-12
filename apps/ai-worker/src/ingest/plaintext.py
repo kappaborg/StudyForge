@@ -19,7 +19,7 @@ def parse_plaintext(content_bytes: bytes) -> list[Block]:
         return []
     try:
         text = content_bytes.decode("utf-8", errors="replace").strip()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return []
     if not text:
         return []

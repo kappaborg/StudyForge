@@ -81,5 +81,5 @@ class ProviderRegistry:
             if callable(close):
                 try:
                     await close()
-                except Exception:  # noqa: BLE001 — shutdown is best-effort
+                except Exception:
                     log.exception("error closing provider %s", getattr(adapter, "id", "?"))

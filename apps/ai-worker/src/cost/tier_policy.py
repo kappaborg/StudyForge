@@ -55,7 +55,7 @@ class TierPolicy(BaseModel):
     warn_threshold_pct: Annotated[int, Field(ge=50, le=99)] = 80
 
     @model_validator(mode="after")
-    def _free_tier_must_not_block(self) -> "TierPolicy":
+    def _free_tier_must_not_block(self) -> TierPolicy:
         free = self.tiers.get(TierName.free)
         if free is not None and free.on_exhaust is ExhaustPolicy.block:
             raise ValueError(
@@ -65,7 +65,7 @@ class TierPolicy(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _tiers_cover_known_names(self) -> "TierPolicy":
+    def _tiers_cover_known_names(self) -> TierPolicy:
         # Allow partial coverage in tests; missing tiers are treated as "not
         # offered" at runtime. We just sanity-check that what's present is
         # internally consistent.

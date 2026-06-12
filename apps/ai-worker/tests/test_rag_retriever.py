@@ -17,15 +17,14 @@ from src.rag.contracts import (
     RetrieverKind,
 )
 from src.rag.retriever import (
+    ChunkResolver,
     DenseRetriever,
     Embedder,
     Reranker,
+    RetrievalCache,
     Retriever,
     SparseRetriever,
-    ChunkResolver,
-    RetrievalCache,
 )
-
 
 # ── stubs ───────────────────────────────────────────────────────────────────
 

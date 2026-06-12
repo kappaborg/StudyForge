@@ -21,7 +21,6 @@ from .contracts import (
 )
 from .fusion import reciprocal_rank_fusion
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Pluggable boundaries
 # ─────────────────────────────────────────────────────────────────────────────
@@ -283,11 +282,11 @@ __all__ = [
     "Embedder",
     "MetadataFilter",
     "Reranker",
-    "Retriever",
     "RetrievalCache",
     "RetrievalRequest",
     "RetrievalResult",
     "RetrievalTelemetry",
     "RetrievedChunk",
+    "Retriever",
     "RetrieverKind",
 ]

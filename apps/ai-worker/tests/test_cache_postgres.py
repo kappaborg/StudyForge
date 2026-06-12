@@ -37,26 +37,24 @@ async def pool():
     if not await _postgres_reachable():
         pytest.skip("postgres unreachable; skipping cache integration")
     # Provision a tenant the rows can reference.
-    async with await psycopg.AsyncConnection.connect(DSN) as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                'INSERT INTO "Tenant" (id, name, slug, "updatedAt") '
-                "VALUES (%s, 'CacheSmoke', %s, now()) ON CONFLICT (id) DO NOTHING",
-                ("aaaaaaaa-0000-0000-0000-000000000001", "cache-smoke"),
-            )
-            await conn.commit()
+    async with await psycopg.AsyncConnection.connect(DSN) as conn, conn.cursor() as cur:
+        await cur.execute(
+            'INSERT INTO "Tenant" (id, name, slug, "updatedAt") '
+            "VALUES (%s, 'CacheSmoke', %s, now()) ON CONFLICT (id) DO NOTHING",
+            ("aaaaaaaa-0000-0000-0000-000000000001", "cache-smoke"),
+        )
+        await conn.commit()
 
     p = AsyncConnectionPool(DSN, min_size=1, max_size=2, open=False)
     await p.open()
     yield p
     # Clean cache rows for the smoke tenant.
-    async with p.connection() as conn:
-        async with conn.cursor() as cur:
-            await cur.execute(
-                'DELETE FROM "CachedResponse" WHERE "tenantId" = %s::uuid',
-                ("aaaaaaaa-0000-0000-0000-000000000001",),
-            )
-            await conn.commit()
+    async with p.connection() as conn, conn.cursor() as cur:
+        await cur.execute(
+            'DELETE FROM "CachedResponse" WHERE "tenantId" = %s::uuid',
+            ("aaaaaaaa-0000-0000-0000-000000000001",),
+        )
+        await conn.commit()
     await p.close()
 
 

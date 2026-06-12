@@ -6,7 +6,7 @@ import fitz
 import pytest
 
 from src.agents.contracts import SafetyFlag
-from src.ingest import InMemoryIngestStore, IngestRequest, ingest_document
+from src.ingest import IngestRequest, InMemoryIngestStore, ingest_document
 from src.ingest.pipeline import UnsupportedMimeError
 
 

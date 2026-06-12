@@ -22,6 +22,8 @@ Two implementations:
 
 from .contracts import (
     CacheHit as CacheHit,
+)
+from .contracts import (
     SemanticCache as SemanticCache,
 )
 from .inmemory import InMemorySemanticCache as InMemorySemanticCache

@@ -6,20 +6,21 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..agents.contracts import (
     QuizFromChunksInput,
     QuizItemKind,
+)
+from ..agents.contracts import (
     RetrievedChunk as AgentChunk,
 )
 from ..agents.quiz import QuizAgent
-from ..rag.contracts import Candidate, MetadataFilter, RetrievalRequest
-from ..rag.factory import is_stub_embedder
-from ..rag.retriever import Embedder, Retriever
+from ..rag.contracts import Candidate, RetrievalRequest
+from ..rag.factory import build_reranker, is_stub_embedder
 from ..rag.postgres import build_postgres_backends
-from ..rag.factory import build_reranker
+from ..rag.retriever import Embedder, Retriever
 from ._chunk_trim import trim_chunk_content
 
 log = logging.getLogger(__name__)
@@ -97,7 +98,7 @@ def build_router(
                     k=max(req.item_count + 2, 8),
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.exception("quiz.retrieval_failed")
             raise HTTPException(status_code=502, detail=f"retrieval failed: {exc}") from exc
 

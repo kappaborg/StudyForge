@@ -29,9 +29,9 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel, ConfigDict
 
 from ..llm.contracts import ChannelMessage, LLMProvider, LLMRequest
 
@@ -124,7 +124,7 @@ def build_router(
         # 3. Ask the LLM.
         try:
             assignments = await _ask_llm(provider, req.model, sample)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("deep_index.llm_failed err=%s", exc)
             return DeepIndexResponse(
                 document_id=req.document_id,
@@ -185,10 +185,9 @@ async def _load_chunks(
            AND d."deletedAt" IS NULL
          ORDER BY c.ordinal ASC
     """
-    async with pool.connection() as conn:
-        async with conn.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, {"doc": document_id, "tenant": tenant_id})
-            return list(await cur.fetchall())
+    async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+        await cur.execute(sql, {"doc": document_id, "tenant": tenant_id})
+        return list(await cur.fetchall())
 
 
 def _uniform_sample(rows: list[dict[str, Any]], cap: int) -> list[dict[str, Any]]:
@@ -353,4 +352,4 @@ async def _backfill(
     return updated, len(chapters), len(sections)
 
 
-__all__ = ["build_router", "DeepIndexRequest", "DeepIndexResponse"]
+__all__ = ["DeepIndexRequest", "DeepIndexResponse", "build_router"]

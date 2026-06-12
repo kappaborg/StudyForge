@@ -13,17 +13,17 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel, ConfigDict, Field
 
-from ..agents.contracts import RetrievedChunk as AgentChunk, TutorInput
+from ..agents.contracts import RetrievedChunk as AgentChunk
+from ..agents.contracts import TutorInput
 from ..agents.tutor import TutorAgent
-from ..rag.contracts import Candidate, MetadataFilter, RetrievalRequest
+from ..rag.contracts import Candidate, RetrievalRequest
 from ..rag.contracts import RetrievedChunk as RagChunk
-from ..rag.factory import is_stub_embedder
-from ..rag.retriever import Embedder, Retriever
+from ..rag.factory import build_reranker, is_stub_embedder
 from ..rag.postgres import build_postgres_backends
-from ..rag.factory import build_reranker
+from ..rag.retriever import Embedder, Retriever
 from ._chunk_trim import trim_chunk_content
 
 
@@ -70,7 +70,13 @@ class TutorAskResponse(BaseModel):
     retrieved_chunk_count: int
 
 
-def build_router(*, dsn: str, pool: AsyncConnectionPool, tutor_agent: TutorAgent, embedder: Embedder) -> APIRouter:
+def build_router(
+    *,
+    dsn: str,
+    pool: AsyncConnectionPool,
+    tutor_agent: TutorAgent,
+    embedder: Embedder,
+) -> APIRouter:
     router = APIRouter(prefix="/v1/tutor", tags=["tutor"])
 
     # Lazy-build the retriever the first time the endpoint fires. Pool is
@@ -104,7 +110,7 @@ def build_router(*, dsn: str, pool: AsyncConnectionPool, tutor_agent: TutorAgent
                     k=req.top_k,
                 )
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.exception("retrieval failed")
             raise HTTPException(status_code=502, detail=f"retrieval failed: {exc}") from exc
 
@@ -158,16 +164,15 @@ def build_router(*, dsn: str, pool: AsyncConnectionPool, tutor_agent: TutorAgent
     @router.get("/_diagnose")
     async def diagnose() -> dict[str, Any]:
         """Quick sanity probe — counts in the DB scoped to a tenant header."""
-        async with pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    'SELECT count(*) FROM "Document" WHERE "deletedAt" IS NULL'
-                )
-                doc_count = (await cur.fetchone() or (0,))[0]
-                await cur.execute(
-                    'SELECT count(*) FROM "Chunk" WHERE embedding IS NOT NULL'
-                )
-                embedded_count = (await cur.fetchone() or (0,))[0]
+        async with pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                'SELECT count(*) FROM "Document" WHERE "deletedAt" IS NULL'
+            )
+            doc_count = (await cur.fetchone() or (0,))[0]
+            await cur.execute(
+                'SELECT count(*) FROM "Chunk" WHERE embedding IS NOT NULL'
+            )
+            embedded_count = (await cur.fetchone() or (0,))[0]
         return {"documents": doc_count, "embedded_chunks": embedded_count}
 
     return router

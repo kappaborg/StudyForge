@@ -15,13 +15,13 @@ from collections.abc import AsyncIterator
 
 import pytest
 
+from src.agents.contracts import RetrievedChunk, TutorInput
 from src.agents.tutor import (
     CITATION_TAG_RE,
     TutorAgent,
     _extract_cited_chunk_ids,
     _strip_citation_tags,
 )
-from src.agents.contracts import RetrievedChunk, TutorInput
 from src.llm.contracts import (
     LLMProvider,
     LLMRequest,
@@ -29,7 +29,6 @@ from src.llm.contracts import (
     LLMStreamChunk,
     LLMUsage,
 )
-
 
 # ── shared helpers ────────────────────────────────────────────────────────────
 

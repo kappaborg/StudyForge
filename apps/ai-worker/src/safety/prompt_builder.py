@@ -14,7 +14,6 @@ from typing import Literal
 
 from ..agents.contracts import RetrievedChunk
 
-
 Role = Literal["system", "user", "assistant", "tool"]
 
 

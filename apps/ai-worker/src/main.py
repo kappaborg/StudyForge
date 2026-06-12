@@ -10,27 +10,27 @@ setup_observability()
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .agents import registry as agent_registry
+from .agents.diagram import DiagramAgent
 from .agents.flashcard import FlashcardAgent
 from .agents.ingest_agent import build_default_ingest_agent
-from .agents.quiz import QuizAgent
-from .agents.diagram import DiagramAgent
 from .agents.presentation import PresentationAgent
+from .agents.quiz import QuizAgent
 from .agents.roadmap import RoadmapAgent
 from .agents.semantic import SemanticAnalyzerAgent
 from .agents.tutor import TutorAgent
 from .api.admin import build_router as build_admin_router
-from .api.diagrams import build_router as build_diagrams_router
 from .api.deep_index import build_router as build_deep_index_router
+from .api.diagrams import build_router as build_diagrams_router
 from .api.exam_scopes import build_router as build_exam_scopes_router
-from .api.ingest_url import build_router as build_ingest_url_router
 from .api.flashcards import build_router as build_flashcards_router
+from .api.ingest_url import build_router as build_ingest_url_router
 from .api.presentations import build_router as build_presentations_router
 from .api.quizzes import build_router as build_quizzes_router
 from .api.roadmaps import build_router as build_roadmaps_router
@@ -166,7 +166,8 @@ app.include_router(build_exam_scopes_router())
 # One embedder for every RAG-using route. ``EMBEDDER_BACKEND=fastembed``
 # in the worker .env flips dense retrieval from no-op (stub vectors) to
 # real ONNX bge-large-en-v1.5. See ``rag/factory.py``.
-from .rag.factory import build_embedder  # noqa: E402
+from .rag.factory import build_embedder
+
 embedder = build_embedder(settings)
 log.info("ai-worker.embedder", backend=type(embedder).__name__)
 
@@ -270,7 +271,7 @@ def health() -> dict[str, str]:
     return {
         "status": "ok",
         "service": "ai-worker",
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
     }
 
 
@@ -279,5 +280,5 @@ def ready() -> dict[str, str]:
     return {
         "status": "ok",
         "service": "ai-worker",
-        "ts": datetime.now(timezone.utc).isoformat(),
+        "ts": datetime.now(UTC).isoformat(),
     }

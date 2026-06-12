@@ -2,5 +2,7 @@
 
 from .diff import (
     ArtifactDiff as ArtifactDiff,
+)
+from .diff import (
     diff_artifacts as diff_artifacts,
 )

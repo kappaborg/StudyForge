@@ -101,8 +101,8 @@ def _ocr_fallback(doc: Any) -> list[Block]:
     monolithic chunk.
     """
     try:
-        from PIL import Image
         import pytesseract
+        from PIL import Image
     except ImportError as exc:
         log.error("pdf.ocr_unavailable err=%s", exc)
         return []
@@ -132,7 +132,7 @@ def _ocr_fallback(doc: Any) -> list[Block]:
                 "or `apt-get install tesseract-ocr`",
             )
             return []
-        except Exception as exc:  # noqa: BLE001 — surface as empty page, not 5xx
+        except Exception as exc:
             log.warning(
                 "pdf.ocr_page_failed page=%d err=%s",
                 page_index + 1,

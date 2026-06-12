@@ -161,7 +161,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@0.36.0
         with:
           scan-type: 'fs'
           severity: 'HIGH,CRITICAL'
@@ -267,6 +267,9 @@ jobs:
         ports: ['6379:6379']
     env:
       DATABASE_URL: postgresql://studyforge:studyforge@localhost:5432/studyforge?schema=public
+      # Same connection — CI has no PgBouncer between us and Postgres, so the
+      # ``directUrl`` channel collapses to the same DSN as ``url``.
+      DIRECT_URL: postgresql://studyforge:studyforge@localhost:5432/studyforge?schema=public
       REDIS_URL: redis://localhost:6379
       AUTH_MODE: real
       SESSION_COOKIE_SECRET: ci-smoke-secret-not-used-in-prod

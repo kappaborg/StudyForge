@@ -257,21 +257,20 @@ class TsvectorSparseRetriever:
         or_query = _build_or_tsquery(query)
         if not or_query:
             return []
-        async with pool.connection() as conn:
-            async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(
-                    sql,
-                    {
-                        "or_query": or_query,
-                        "tenant_id": tenant_id,
-                        "course_id": course_id,
-                        "folder_id": folder_id,
-                        "chapters": chapters if chapters else None,
-                        "allowed_folder_ids": allowed_folder_ids if allowed_folder_ids else None,
-                        "k": k,
-                    },
-                )
-                rows = await cur.fetchall()
+        async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                sql,
+                {
+                    "or_query": or_query,
+                    "tenant_id": tenant_id,
+                    "course_id": course_id,
+                    "folder_id": folder_id,
+                    "chapters": chapters if chapters else None,
+                    "allowed_folder_ids": allowed_folder_ids if allowed_folder_ids else None,
+                    "k": k,
+                },
+            )
+            rows = await cur.fetchall()
         max_score = max((float(r["rank_score"]) for r in rows), default=1.0)
         if max_score <= 0.0:
             max_score = 1.0
@@ -315,10 +314,9 @@ class PostgresChunkResolver:
               JOIN "DocumentVersion" v ON v.id = c."documentVersionId"
              WHERE c.id = ANY(%(ids)s::uuid[])
         """
-        async with pool.connection() as conn:
-            async with conn.cursor(row_factory=dict_row) as cur:
-                await cur.execute(sql, {"ids": chunk_ids})
-                rows = await cur.fetchall()
+        async with pool.connection() as conn, conn.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql, {"ids": chunk_ids})
+            rows = await cur.fetchall()
         by_id = {str(row["id"]): row for row in rows}
         out: list[RetrievedChunk] = []
         for chunk_id in chunk_ids:

@@ -22,7 +22,6 @@ from collections.abc import AsyncIterator
 
 from ..agents.contracts import RetrievedChunk, TutorInput
 from ..agents.tutor import TutorAgent
-from .ragas_lite import score_case
 from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
@@ -31,6 +30,7 @@ from ..llm.contracts import (
     LLMUsage,
 )
 from .contracts import EvalResult, GoldenCase, GoldenChunk
+from .ragas_lite import score_case
 
 
 class _ScriptedProvider(LLMProvider):

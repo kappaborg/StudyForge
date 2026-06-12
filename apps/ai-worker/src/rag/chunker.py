@@ -189,7 +189,7 @@ class TextChunker:
             sections.append(([h for _, h in stack], tail, offset))
         return sections
 
-    def _split_section(self, text: str) -> list["TextPiece"]:
+    def _split_section(self, text: str) -> list[TextPiece]:
         sentences = self._sentences(text)
         if not sentences:
             return []
@@ -234,7 +234,7 @@ class TextChunker:
             )
         return pieces
 
-    def _sentences(self, text: str) -> list["TextPiece"]:
+    def _sentences(self, text: str) -> list[TextPiece]:
         pieces: list[TextPiece] = []
         cursor = 0
         for match in SENTENCE_BOUNDARY_RE.finditer(text):

@@ -15,6 +15,8 @@ from typing import Any
 
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
+)
+from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
@@ -87,7 +89,7 @@ class QuizAgent:
 
         try:
             response = await self._call_llm(payload, retrieved_chunks)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("quiz.llm_error fallback_to_stub err=%s", exc)
             return self._stub_response(payload, retrieved_chunks)
         items = self._parse_items(response.text, retrieved_chunks, payload)

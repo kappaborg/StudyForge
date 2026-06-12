@@ -16,7 +16,6 @@ from src.eval import (
 )
 from src.eval.contracts import GoldenChunk
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SHIPPED_GOLDEN = REPO_ROOT / "packages" / "eval-harness" / "golden" / "tutor.answer.v1" / "cases.jsonl"
 
@@ -31,7 +30,7 @@ def test_loader_reads_jsonl_skipping_comments(tmp_path: Path) -> None:
         "\n"
         '{"case_id": "a", "query": "Q?", "expect_refusal": true}\n'
         "# inline comment\n"
-        '{"case_id": "b", "query": "Q?", "chunks": [{"chunk_id": "c1", "content": "..."}], "expected_chunks": ["c1"]}\n'
+        '{"case_id": "b", "query": "Q?", "chunks": [{"chunk_id": "c1", "content": "..."}], "expected_chunks": ["c1"]}\n'  # noqa: E501 — golden-case fixture is single-line by spec
     )
     cases = load_golden_set(p)
     assert [c.case_id for c in cases] == ["a", "b"]

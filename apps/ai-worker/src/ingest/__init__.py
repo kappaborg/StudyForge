@@ -13,12 +13,20 @@ parsers slot in behind the same ``Parser`` Protocol in Phase 1 mid.
 from .pdf import parse_pdf as parse_pdf
 from .pipeline import (
     IngestRequest as IngestRequest,
+)
+from .pipeline import (
     IngestResult as IngestResult,
+)
+from .pipeline import (
     ingest_document as ingest_document,
 )
 from .safety_pass import safety_pass as safety_pass
 from .store import (
-    InMemoryIngestStore as InMemoryIngestStore,
     IngestStore as IngestStore,
+)
+from .store import (
+    InMemoryIngestStore as InMemoryIngestStore,
+)
+from .store import (
     PostgresIngestStore as PostgresIngestStore,
 )

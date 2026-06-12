@@ -40,7 +40,7 @@ class Agent(Protocol, Generic[I, O]):
         ...
 
 
-def idempotency_key_for(agent: "Agent[Any, Any]", payload: BaseModel) -> str:
+def idempotency_key_for(agent: Agent[Any, Any], payload: BaseModel) -> str:
     """Stable per-step idempotency key. Two invocations with the same agent +
     version + input produce the same key; the orchestrator collapses them.
     """
@@ -61,7 +61,7 @@ class AgentRegistry:
     def __init__(self) -> None:
         self._agents: dict[str, Agent[Any, Any]] = {}
 
-    def register(self, agent: "Agent[Any, Any]") -> None:
+    def register(self, agent: Agent[Any, Any]) -> None:
         if agent.name in self._agents:
             existing = self._agents[agent.name]
             if existing.version == agent.version:
@@ -74,7 +74,7 @@ class AgentRegistry:
             )
         self._agents[agent.name] = agent
 
-    def get(self, name: str) -> "Agent[Any, Any]":
+    def get(self, name: str) -> Agent[Any, Any]:
         try:
             return self._agents[name]
         except KeyError as exc:

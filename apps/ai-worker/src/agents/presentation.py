@@ -15,6 +15,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
+)
+from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
@@ -105,7 +107,7 @@ class PresentationAgent:
 
         try:
             response = await self._call_llm(payload, retrieved_chunks)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("presentation.llm_error fallback_to_stub err=%s", exc)
             md = self._stub_markdown(payload, retrieved_chunks)
             return PresentationOutput(

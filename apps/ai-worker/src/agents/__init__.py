@@ -6,4 +6,6 @@ Twelve specialised agents, each independently testable. Coordination happens in
 """
 
 from . import contracts as contracts
-from .base import Agent as Agent, AgentRegistry as AgentRegistry, registry as registry
+from .base import Agent as Agent
+from .base import AgentRegistry as AgentRegistry
+from .base import registry as registry

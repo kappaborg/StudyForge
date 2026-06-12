@@ -25,7 +25,7 @@ def parse_notebook(ipynb_bytes: bytes) -> list[Block]:
 
     try:
         nb = nbformat.read(io.BytesIO(ipynb_bytes), as_version=4)  # type: ignore[no-untyped-call]
-    except Exception as exc:  # noqa: BLE001 — surface as empty parse for the user
+    except Exception as exc:
         log.warning("notebook parse failed: %s", exc)
         return []
 

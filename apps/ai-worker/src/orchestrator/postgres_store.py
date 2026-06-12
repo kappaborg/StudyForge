@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
@@ -46,15 +46,14 @@ class PostgresRunStore(RunStore):
 
     async def upsert(self, run: Run) -> Run:
         """Insert or update. Refreshes ``updated_at`` on the row."""
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now_iso = datetime.now(UTC).isoformat()
         run_dict = run.model_dump(mode="json")
         run_dict["updated_at"] = now_iso
         refreshed = Run.model_validate(run_dict)
 
-        async with self._pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(
-                    """
+        async with self._pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(
+                """
                     INSERT INTO "Job" (
                       id, "tenantId", "userId", kind, state, attempts,
                       "maxAttempts", "idempotencyKey", payload, steps,
@@ -81,25 +80,25 @@ class PostgresRunStore(RunStore):
                       "completedAt"= EXCLUDED."completedAt",
                       "updatedAt"  = EXCLUDED."updatedAt"
                     """,
-                    (
-                        refreshed.id,
-                        refreshed.tenant_id,
-                        refreshed.user_id,
-                        refreshed.kind,
-                        refreshed.state.value,
-                        refreshed.attempts,
-                        refreshed.max_attempts,
-                        refreshed.idempotency_key,
-                        Jsonb(refreshed.payload),
-                        Jsonb([s.model_dump(mode="json") for s in refreshed.steps]),
-                        Jsonb(refreshed.result) if refreshed.result is not None else None,
-                        refreshed.error,
-                        _completed_at_iso(refreshed),
-                        refreshed.created_at,
-                        refreshed.updated_at,
-                        refreshed.created_at,  # scheduledFor: align with created_at by default
-                    ),
-                )
+                (
+                    refreshed.id,
+                    refreshed.tenant_id,
+                    refreshed.user_id,
+                    refreshed.kind,
+                    refreshed.state.value,
+                    refreshed.attempts,
+                    refreshed.max_attempts,
+                    refreshed.idempotency_key,
+                    Jsonb(refreshed.payload),
+                    Jsonb([s.model_dump(mode="json") for s in refreshed.steps]),
+                    Jsonb(refreshed.result) if refreshed.result is not None else None,
+                    refreshed.error,
+                    _completed_at_iso(refreshed),
+                    refreshed.created_at,
+                    refreshed.updated_at,
+                    refreshed.created_at,  # scheduledFor: align with created_at by default
+                ),
+            )
         return refreshed
 
     # ── get ───────────────────────────────────────────────────────────────────

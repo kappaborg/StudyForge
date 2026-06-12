@@ -6,7 +6,6 @@ from src.llm.anthropic import _extract_anthropic_usage
 from src.llm.contracts import LLMUsage
 from src.llm.openai_compat import extract_usage, maybe_usage
 
-
 # ── LLMUsage cache_hit_ratio property ────────────────────────────────────────
 
 

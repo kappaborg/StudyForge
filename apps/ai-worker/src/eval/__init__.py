@@ -21,8 +21,14 @@ Public surface:
 
 from .contracts import (
     EvalReport as EvalReport,
+)
+from .contracts import (
     EvalResult as EvalResult,
+)
+from .contracts import (
     GoldenCase as GoldenCase,
+)
+from .contracts import (
     Threshold as Threshold,
 )
 from .loader import load_golden_set as load_golden_set

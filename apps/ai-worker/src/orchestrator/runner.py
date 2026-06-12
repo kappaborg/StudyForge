@@ -10,13 +10,12 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Any, Iterable
+from collections.abc import Iterable
+from datetime import UTC, datetime
+from typing import Any
 from uuid import uuid4
 
 from pydantic import ValidationError
-
-JsonDict = dict[str, Any]
 
 from ..agents.base import AgentRegistry, idempotency_key_for
 from ..agents.contracts import (
@@ -27,9 +26,11 @@ from ..agents.contracts import (
 )
 from .store import RunStore
 
+JsonDict = dict[str, Any]
+
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class Orchestrator:
@@ -160,7 +161,7 @@ class Orchestrator:
 
     # ── helpers ─────────────────────────────────────────────────────────────
 
-    def _materialise_step(self, spec: "StepSpec") -> Step:
+    def _materialise_step(self, spec: StepSpec) -> Step:
         agent = self._registry.get(spec.agent_name)
         try:
             validated = agent.input_model.model_validate(spec.input)
@@ -201,7 +202,7 @@ class Orchestrator:
 class StepSpec:
     """In-process spec for declaring a step before the run is materialised."""
 
-    __slots__ = ("name", "agent_name", "input")
+    __slots__ = ("agent_name", "input", "name")
 
     def __init__(self, *, name: str, agent_name: str, input: JsonDict) -> None:
         self.name = name
@@ -209,7 +210,7 @@ class StepSpec:
         self.input = input
 
 
-class StepFailure(Exception):
+class StepFailure(Exception):  # noqa: N818 — public API; renaming to StepFailureError would break callers
     def __init__(self, message: str) -> None:
         super().__init__(message)
         self.message = message

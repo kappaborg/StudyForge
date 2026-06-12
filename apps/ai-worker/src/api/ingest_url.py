@@ -24,8 +24,8 @@ from xml.etree.ElementTree import ParseError as XmlParseError
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..ingest import IngestRequest, PostgresIngestStore, ingest_document
 from ..rag.embed_writer import embed_pending_chunks
@@ -136,7 +136,7 @@ async def _fetch_youtube_title(video_id: str) -> str | None:
         if resp.status_code != 200:
             return None
         data = resp.json()
-    except Exception as exc:  # noqa: BLE001 — title lookup is best-effort
+    except Exception as exc:
         log.info("youtube.oembed_failed video_id=%s err=%s", video_id, exc)
         return None
     title = data.get("title")
@@ -195,12 +195,14 @@ def _fetch_youtube_transcript(video_id: str, languages: list[str]) -> tuple[str,
     try:
         transcript_list = api.list(video_id)
     except TranscriptsDisabled:
-        raise HTTPException(status_code=400, detail="This video has captions disabled.")
+        raise HTTPException(status_code=400, detail="This video has captions disabled.") from None
     except VideoUnavailable:
-        raise HTTPException(status_code=404, detail="Video is unavailable.")
+        raise HTTPException(status_code=404, detail="Video is unavailable.") from None
     except XmlParseError:
-        raise HTTPException(status_code=400, detail="Could not parse YouTube transcript response.")
-    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400, detail="Could not parse YouTube transcript response."
+        ) from None
+    except Exception as exc:
         log.exception("youtube.list_failed video_id=%s", video_id)
         raise HTTPException(status_code=502, detail=f"YouTube fetch failed: {exc}") from exc
 
@@ -229,8 +231,10 @@ def _fetch_youtube_transcript(video_id: str, languages: list[str]) -> tuple[str,
     try:
         fetched = transcript.fetch()
     except XmlParseError:
-        raise HTTPException(status_code=400, detail="Could not parse YouTube transcript response.")
-    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=400, detail="Could not parse YouTube transcript response."
+        ) from None
+    except Exception as exc:
         log.exception("youtube.fetch_failed video_id=%s", video_id)
         raise HTTPException(status_code=502, detail=f"YouTube transcript fetch failed: {exc}") from exc
 
@@ -387,10 +391,9 @@ def build_router(
              ORDER BY v."versionNumber" DESC
              LIMIT 1
         """
-        async with pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, {"doc": req.document_id, "tenant": req.tenant_id})
-                row = await cur.fetchone()
+        async with pool.connection() as conn, conn.cursor() as cur:
+            await cur.execute(sql, {"doc": req.document_id, "tenant": req.tenant_id})
+            row = await cur.fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="Document not found for tenant.")
         version_id = str(row[0])
@@ -415,9 +418,9 @@ def build_router(
 
 
 __all__ = [
-    "build_router",
-    "IngestUrlRequest",
-    "IngestUrlResponse",
     "IngestTextRequest",
     "IngestTextResponse",
+    "IngestUrlRequest",
+    "IngestUrlResponse",
+    "build_router",
 ]

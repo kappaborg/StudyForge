@@ -22,7 +22,6 @@ from src.llm.contracts import (
 )
 from src.rag.embedder import StubEmbedder
 
-
 # ── chunk_set_hash util ──────────────────────────────────────────────────────
 
 

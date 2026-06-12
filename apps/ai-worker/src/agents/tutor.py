@@ -24,6 +24,8 @@ from collections.abc import Iterable
 from ..cache import CacheHit, SemanticCache, chunk_set_hash
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
+)
+from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
     LLMResponse,
@@ -144,7 +146,7 @@ class TutorAgent:
 
         try:
             response = await self._call_llm(payload, supportive)
-        except Exception as exc:  # noqa: BLE001 — translated into refusal
+        except Exception as exc:
             log.exception("tutor LLM call failed: %s", exc)
             return self._refuse_llm_error(payload, supportive)
 
@@ -206,7 +208,7 @@ class TutorAgent:
 
     async def _lookup_cache(
         self, payload: TutorInput, chunk_hash: str
-    ) -> "CacheHit | None":
+    ) -> CacheHit | None:
         if self._cache is None or payload.tenant_id is None:
             return None
         try:
@@ -217,7 +219,7 @@ class TutorAgent:
                 chunk_set_hash=chunk_hash,
                 similarity_threshold=self._cache_threshold,
             )
-        except Exception as exc:  # noqa: BLE001 — cache must never break the user path
+        except Exception as exc:
             log.warning("tutor cache lookup failed: %s", exc)
             return None
 
@@ -240,7 +242,7 @@ class TutorAgent:
                 citations=citations,
                 freshness_sec=self._cache_freshness_sec,
             )
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("tutor cache store failed: %s", exc)
 
     async def _call_llm(
@@ -333,7 +335,7 @@ class TutorAgent:
         # GROQ_API_KEY (or OPENAI/ANTHROPIC) for a real synthesised answer.
         top = supportive[:3]
         excerpts: list[str] = []
-        for idx, chunk in enumerate(top, start=1):
+        for chunk in top:
             snippet = " ".join(chunk.content.split())[:280]
             excerpts.append(f"[chunk:{chunk.chunk_id}] {snippet}…")
         body = "\n\n".join(excerpts) if excerpts else "(no supporting excerpts)"

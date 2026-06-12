@@ -18,11 +18,12 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
 from psycopg_pool import AsyncConnectionPool
+from pydantic import BaseModel, ConfigDict, Field
 from starlette.responses import StreamingResponse
 
-from ..agents.contracts import RetrievedChunk as AgentChunk, TutorInput
+from ..agents.contracts import RetrievedChunk as AgentChunk
+from ..agents.contracts import TutorInput
 from ..agents.tutor import (
     CITATION_TAG_RE,
     TUTOR_SYSTEM_PROMPT,
@@ -32,12 +33,13 @@ from ..agents.tutor import (
 )
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
+)
+from ..llm.contracts import (
     LLMRequest,
 )
 from ..rag.contracts import RetrievalRequest
-from ..rag.factory import is_stub_embedder
+from ..rag.factory import build_reranker, is_stub_embedder
 from ..rag.postgres import build_postgres_backends
-from ..rag.factory import build_reranker
 from ..rag.retriever import Embedder, Retriever
 from ..safety.prompt_builder import build_messages
 from ._chunk_trim import trim_chunk_content
@@ -121,7 +123,7 @@ async def _emit(
                 k=req.top_k,
             )
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         yield _sse("error", {"message": f"retrieval failed: {exc}"})
         return
 
@@ -186,7 +188,7 @@ async def _emit(
                     yield _sse("delta", {"text": clean_delta})
             if delta_chunk.done:
                 break
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         yield _sse("error", {"message": f"llm stream failed: {exc}"})
         return
 
@@ -222,7 +224,7 @@ async def _emit(
 
 
 # Re-export for the TutorInput conversion site if a future consumer needs it.
-__all__ = ["build_router", "TutorStreamRequest"]
+__all__ = ["TutorStreamRequest", "build_router"]
 
 # Touch TutorInput so mypy keeps the import for future use (the underscore
 # private symbols above are stable from agents.tutor).

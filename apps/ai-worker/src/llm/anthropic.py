@@ -95,7 +95,7 @@ class AnthropicProvider:
                 timeout=5,
             )
             return {"ok": True, "latency_ms": int((time.perf_counter() - started) * 1000)}
-        except Exception:  # noqa: BLE001
+        except Exception:
             return {"ok": False, "latency_ms": int((time.perf_counter() - started) * 1000)}
 
     def _headers(self) -> dict[str, str]:

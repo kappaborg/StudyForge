@@ -13,7 +13,6 @@ from collections.abc import Iterator
 
 from ..agents.contracts import Concept, ConceptEdge, ConceptEdgeKind
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Cycle detection
 # ─────────────────────────────────────────────────────────────────────────────
@@ -107,7 +106,7 @@ def topological_order(
 
     adjacency = _directed_adjacency(concepts, edges)
     in_degree: dict[str, int] = {c.id: 0 for c in concepts}
-    for src, targets in adjacency.items():
+    for _src, targets in adjacency.items():
         for t in targets:
             in_degree[t] = in_degree.get(t, 0) + 1
 

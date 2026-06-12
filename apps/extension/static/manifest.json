@@ -22,7 +22,9 @@
   "host_permissions": [
     "http://localhost:3001/*",
     "http://localhost:3000/*",
-    "https://*.studyforge.ai/*"
+    "https://*.studyforge.ai/*",
+    "https://study-forge-web.vercel.app/*",
+    "https://*.onrender.com/*"
   ],
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'"

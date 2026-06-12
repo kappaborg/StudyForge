@@ -53,7 +53,7 @@ _MULTI_DOC_VOCAB = re.compile(
     re.IGNORECASE,
 )
 _REASONING_VOCAB = re.compile(
-    r"\b(prove|derive|step[- ]by[- ]step|why\s+does|explain\s+why|walk\s+me\s+through|reason(?:ing|s)?\s+about|justify|first[- ]principles?|chain\s+of\s+thought)\b",
+    r"\b(prove|derive|step[- ]by[- ]step|why\s+does|explain\s+why|walk\s+me\s+through|reason(?:ing|s)?\s+about|justify|first[- ]principles?|chain\s+of\s+thought)\b",  # noqa: E501 — single-line regex is more grep-able than chunked
     re.IGNORECASE,
 )
 _SIMPLE_QUESTION = re.compile(

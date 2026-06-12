@@ -171,10 +171,10 @@ class FastEmbedEmbedder:
                 self._model_name,
                 cache_dir or "default",
             )
-            kwargs: dict[str, str] = {"model_name": self._model_name}
             if cache_dir:
-                kwargs["cache_dir"] = cache_dir
-            self._model = TextEmbedding(**kwargs)
+                self._model = TextEmbedding(model_name=self._model_name, cache_dir=cache_dir)
+            else:
+                self._model = TextEmbedding(model_name=self._model_name)
         return self._model
 
     async def embed_query(self, text: str) -> list[float]:  # pragma: no cover

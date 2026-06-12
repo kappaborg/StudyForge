@@ -67,7 +67,7 @@ _PATTERNS: list[tuple[str, re.Pattern[str], float]] = [
     (
         "secret_prompt",
         re.compile(
-            r"\b(reveal|leak|exfiltrate|show\s+me|print|output|dump)\s+(?:the\s+|your\s+)?(system\s+prompt|secret|password|api[-_ ]?key|guardrails?|instructions?)\b",
+            r"\b(reveal|leak|exfiltrate|show\s+me|print|output|dump)\s+(?:the\s+|your\s+)?(system\s+prompt|secret|password|api[-_ ]?key|guardrails?|instructions?)\b",  # noqa: E501 — single-line regex is more grep-able than chunked
             re.IGNORECASE,
         ),
         0.6,

@@ -14,6 +14,8 @@ from typing import Any
 
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
+)
+from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
@@ -94,7 +96,7 @@ class DiagramAgent:
 
         try:
             response = await self._call_llm(payload, retrieved_chunks)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("diagram.llm_error fallback_to_stub err=%s", exc)
             return DiagramAgentOutput(
                 course_id=payload.course_id,

@@ -69,8 +69,8 @@ def parse_image(image_bytes: bytes, *, filename: str = "image") -> list[Block]:
 
     # Lazy-import Pillow + pytesseract here so the worker boot doesn't
     # pull them in when no images are ever uploaded.
-    from PIL import Image, UnidentifiedImageError
     import pytesseract
+    from PIL import Image, UnidentifiedImageError
 
     try:
         # ``Image.open`` returns ``ImageFile``; ``.convert`` returns
@@ -101,7 +101,7 @@ def parse_image(image_bytes: bytes, *, filename: str = "image") -> list[Block]:
             "(brew install tesseract / apt-get install tesseract-ocr)",
         )
         return []
-    except Exception as exc:  # noqa: BLE001 — engine errors shouldn't 5xx
+    except Exception as exc:
         log.warning("image.ocr_failed filename=%s err=%s", filename, exc)
         return []
 

@@ -5,8 +5,8 @@ from __future__ import annotations
 import pytest
 
 from src.agents import AgentRegistry
-from src.agents.tutor import TutorAgent
 from src.agents.contracts import RunState, StepState
+from src.agents.tutor import TutorAgent
 from src.orchestrator import InMemoryRunStore, Orchestrator
 from src.orchestrator.runner import StepSpec
 

@@ -27,7 +27,6 @@ from .contracts import (
     LLMUsage,
 )
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Pure helpers (export for unit tests)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -237,7 +236,7 @@ class OpenAICompatibleProvider:
                 f"{self.base_url}/models", headers=self._headers(), timeout=5
             )
             return {"ok": True, "latency_ms": int((time.perf_counter() - started) * 1000)}
-        except Exception:  # noqa: BLE001 — ping is a best-effort probe
+        except Exception:
             return {"ok": False, "latency_ms": int((time.perf_counter() - started) * 1000)}
 
     # ── headers ──────────────────────────────────────────────────────────────

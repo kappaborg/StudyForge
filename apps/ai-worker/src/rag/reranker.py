@@ -76,7 +76,7 @@ class CrossEncoderReranker:
             log.info("reranker.loading model=%s (first call only)", self._model_name)
             self._model = CrossEncoder(self._model_name)
             return self._model
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             # Network down on first run, missing dep, or model file corrupt.
             # We disable for the lifetime of the process to avoid retrying on
             # every query; restart picks it back up.
@@ -106,7 +106,7 @@ class CrossEncoderReranker:
         # event loop for the 50–200ms a small batch typically takes.
         try:
             scores = await asyncio.to_thread(model.predict, pairs)  # type: ignore[attr-defined]
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             log.warning("reranker.predict_failed err=%s — falling back to identity", exc)
             return chunks[:top_k]
         scored = sorted(

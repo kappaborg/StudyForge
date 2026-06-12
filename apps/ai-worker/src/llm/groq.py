@@ -9,8 +9,8 @@ and Fireworks adapters share the same implementation.
 from __future__ import annotations
 
 from .openai_compat import (
-    OpenAICompatRequestError,
     OpenAICompatibleProvider,
+    OpenAICompatRequestError,
     build_chat_payload,
     extract_usage,
     parse_completion,
