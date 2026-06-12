@@ -20,6 +20,14 @@ Two implementations:
     table from §3.
 """
 
+from .artifact_contracts import (
+    ArtifactCache as ArtifactCache,
+)
+from .artifact_contracts import (
+    ArtifactCacheHit as ArtifactCacheHit,
+)
+from .artifact_inmemory import InMemoryArtifactCache as InMemoryArtifactCache
+from .artifact_postgres import PostgresArtifactCache as PostgresArtifactCache
 from .contracts import (
     CacheHit as CacheHit,
 )

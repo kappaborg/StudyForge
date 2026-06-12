@@ -1116,6 +1116,35 @@ model CachedResponse {
   @@index([expiresAt])
 }
 
+/// Course-shared artifact cache (Phase 2 §13). Generators (flashcards,
+/// quizzes, roadmaps, knowledge graphs) emit deterministic output for a
+/// given input chunk set + agent version. Two courses with byte-equal
+/// content silently collapse to the same row instead of paying for a
+/// second LLM round-trip. The donor is recorded for audit + cost
+/// attribution; `qualityValidated` gates whether downstream consumers
+/// should rely on the row before its donor's eval has passed.
+///
+/// Tenant isolation: the lookup is NOT tenant-scoped — that's the
+/// whole point. Tenant authority lives in the agent layer that
+/// chooses whether to honour a hit.
+model ArtifactCacheEntry {
+  id               String   @id @default(uuid()) @db.Uuid
+  contentHash      String   @db.Citext
+  agentName        String
+  agentVersion     String
+  outputJson       Json
+  donorTenantId    String   @db.Uuid
+  donorCourseId    String?  @db.Uuid
+  qualityValidated Boolean  @default(false)
+  hits             Int      @default(0)
+  createdAt        DateTime @default(now())
+  lastHitAt        DateTime?
+
+  @@unique([contentHash, agentName, agentVersion])
+  @@index([contentHash])
+  @@index([agentName, agentVersion])
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Compliance: audit log, DSAR, feature flags, jobs
 // ─────────────────────────────────────────────────────────────────────────────

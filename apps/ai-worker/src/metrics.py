@@ -56,6 +56,12 @@ CACHE_HIT = Counter(
     labelnames=("tenant_id",),
 )
 
+ARTIFACT_CACHE_HIT = Counter(
+    "studyforge_artifact_cache_hit_total",
+    "Course-shared artifact cache hit (flashcards / quizzes / roadmaps for byte-equal chunk sets).",
+    labelnames=("agent_name", "tenant_id"),
+)
+
 PROMPT_CACHE_CHECK = Counter(
     "studyforge_prompt_cache_check_total",
     "Provider call returned with usage info (cache hit eligible).",
@@ -92,6 +98,13 @@ def record_cache_hit(tenant_id: str | None) -> None:
     CACHE_HIT.labels(tenant_id=tenant_id or "anonymous").inc()
 
 
+def record_artifact_cache_hit(agent_name: str, tenant_id: str | None) -> None:
+    ARTIFACT_CACHE_HIT.labels(
+        agent_name=agent_name,
+        tenant_id=tenant_id or "anonymous",
+    ).inc()
+
+
 def record_provider_call(
     provider_id: str,
     *,
@@ -115,11 +128,13 @@ def record_provider_call(
 
 
 __all__ = [
+    "ARTIFACT_CACHE_HIT",
     "CACHE_HIT",
     "PROMPT_CACHE_CHECK",
     "PROMPT_CACHE_HIT",
     "ROUTER_DECISION",
     "USAGE_TOKENS",
+    "record_artifact_cache_hit",
     "record_cache_hit",
     "record_provider_call",
     "record_router_decision",

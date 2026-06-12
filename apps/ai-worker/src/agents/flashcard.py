@@ -16,6 +16,7 @@ import logging
 import re
 from typing import Any
 
+from ..cache import ArtifactCache, chunk_set_hash
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
 )
@@ -23,6 +24,7 @@ from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
+from ..metrics import record_artifact_cache_hit
 from ..safety.prompt_builder import build_messages
 from .contracts import (
     Citation,
@@ -70,11 +72,13 @@ class FlashcardAgent:
         model: str = DEFAULT_MODEL,
         max_output_tokens: int = 1024,
         temperature: float = 0.3,
+        artifact_cache: ArtifactCache | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
+        self._artifact_cache = artifact_cache
 
     async def run(
         self,
@@ -87,6 +91,39 @@ class FlashcardAgent:
                 deck_title=self._title(payload),
                 flashcards=[],
             )
+
+        # ── course-shared artifact cache lookup ──────────────────────────────
+        # Hash the chunk set + deck size; two courses with byte-equal
+        # materials hit the same row and skip the LLM call entirely.
+        # ``deck_size`` is part of the key because the output shape
+        # changes with it. The flashcard path tolerates unvalidated
+        # rows because the FE marks shared decks distinctly; quizzes
+        # will pass ``require_validated=True`` once they wire here.
+        content_hash = self._content_hash(retrieved_chunks, payload.deck_size)
+        if self._artifact_cache is not None:
+            hit = await self._artifact_cache.lookup(
+                content_hash=content_hash,
+                agent_name=self.name,
+                agent_version=self.version,
+                require_validated=False,
+            )
+            if hit is not None:
+                record_artifact_cache_hit(self.name, payload.tenant_id)
+                log.info(
+                    "flashcard.artifact_cache_hit",
+                    extra={
+                        "agent": self.name,
+                        "tenant_id": payload.tenant_id,
+                        "donor_tenant_id": hit.donor_tenant_id,
+                        "hits": hit.hits,
+                        "quality_validated": hit.quality_validated,
+                    },
+                )
+                # Caller's tenant gets its own course_id stamped into the
+                # response shape; the cached output's course_id was the
+                # donor's and shouldn't leak across tenants.
+                cached_output = {**hit.output, "course_id": payload.course_id}
+                return FlashcardGeneratorOutput.model_validate(cached_output)
 
         if self._provider is None:
             return self._stub_response(payload, retrieved_chunks)
@@ -107,11 +144,38 @@ class FlashcardAgent:
             )
             return self._stub_response(payload, retrieved_chunks)
 
-        return FlashcardGeneratorOutput(
+        output = FlashcardGeneratorOutput(
             course_id=payload.course_id,
             deck_title=self._title(payload),
             flashcards=cards,
         )
+
+        # Store for future cross-course reuse. We do not block the
+        # response on a failed insert — cache writes are best-effort
+        # since the same generation just succeeded.
+        if self._artifact_cache is not None:
+            try:
+                await self._artifact_cache.store(
+                    content_hash=content_hash,
+                    agent_name=self.name,
+                    agent_version=self.version,
+                    output=output.model_dump(mode="json"),
+                    donor_tenant_id=payload.tenant_id,
+                    donor_course_id=payload.course_id,
+                    quality_validated=False,
+                )
+            except Exception as exc:
+                log.warning("flashcard.artifact_cache_store_failed err=%s", exc)
+
+        return output
+
+    def _content_hash(self, chunks: list[RetrievedChunk], deck_size: int) -> str:
+        """Cache key composed of chunk-set fingerprint + the parameter
+        that changes the output shape. ``chunk_set_hash`` is the same
+        helper the semantic cache uses, so corpus changes silently
+        invalidate both."""
+        base = chunk_set_hash(c.chunk_id for c in chunks)
+        return f"{base}:deck={deck_size}"
 
     # ── prompt + call ────────────────────────────────────────────────────────
 

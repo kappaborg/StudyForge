@@ -84,7 +84,6 @@ tutor_provider = _build_default_provider()
 # Flashcard + Quiz agents aren't registered in the orchestrator — they
 # consume pre-retrieved chunks alongside the input, so they don't fit the
 # single-payload ``Agent`` protocol. Their HTTP routers wire retrieval + run.
-flashcard_agent = FlashcardAgent(provider=tutor_provider)
 quiz_agent = QuizAgent(provider=tutor_provider)
 roadmap_agent = RoadmapAgent(provider=tutor_provider)
 semantic_agent = SemanticAnalyzerAgent(provider=tutor_provider)
@@ -212,6 +211,22 @@ else:
 
 tutor_agent = TutorAgent(provider=tutor_provider, cache=_tutor_cache)
 agent_registry.register(tutor_agent)
+
+# Course-shared artifact cache. Postgres-backed when the orchestrator
+# pool is up. Reused across every generator that wires it (flashcard
+# today; quiz + roadmap follow). Misses by tenant id by design — the
+# Phase 2 exit criterion is that two courses with byte-equal materials
+# share the artifact silently.
+from .cache import PostgresArtifactCache
+
+_artifact_cache: PostgresArtifactCache | None = None
+if _run_pool is not None:
+    _artifact_cache = PostgresArtifactCache(pool=_run_pool)  # type: ignore[arg-type]
+    log.info("ai-worker.artifact_cache", backend="postgres")
+else:
+    log.info("ai-worker.artifact_cache", backend="disabled")
+
+flashcard_agent = FlashcardAgent(provider=tutor_provider, artifact_cache=_artifact_cache)
 
 # Tutor synchronous-ask endpoint. Lifespan-bound: requires the same Postgres
 # pool used by the orchestrator run store.
