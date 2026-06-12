@@ -13,6 +13,7 @@ import logging
 import re
 from typing import Any
 
+from ..cache import ArtifactCache, chunk_set_hash
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
 )
@@ -20,6 +21,7 @@ from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
+from ..metrics import record_artifact_cache_hit
 from ..safety.prompt_builder import build_messages
 from .contracts import (
     Citation,
@@ -66,11 +68,22 @@ class QuizAgent:
         model: str = DEFAULT_MODEL,
         max_output_tokens: int = 1024,
         temperature: float = 0.3,
+        artifact_cache: ArtifactCache | None = None,
+        require_validated_cache_hits: bool = False,
     ) -> None:
         self._provider = provider
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
+        self._artifact_cache = artifact_cache
+        # Phase 2 exit criterion is "quiz rationale-consistency ≥ 0.95"
+        # — once Phase B-4 (Ragas) is wired, the donor's row will get
+        # ``qualityValidated=True`` only after that gate passes, at
+        # which point this flag should flip to True so a strict consumer
+        # never sees an unvalidated quiz. Default False today because
+        # no row is ever validated yet — flipping it on now would
+        # always miss the cache.
+        self._require_validated = require_validated_cache_hits
 
     async def run(
         self,
@@ -83,6 +96,37 @@ class QuizAgent:
                 title=self._title(payload),
                 items=[],
             )
+
+        # ── course-shared artifact cache lookup ──────────────────────────────
+        # Chunk-set hash plus the two params that change output shape:
+        # ``item_count`` (how many questions) and ``difficulty`` (which
+        # tweaks distractor selection in the prompt).
+        content_hash = self._content_hash(
+            retrieved_chunks, payload.item_count, payload.difficulty
+        )
+        if self._artifact_cache is not None:
+            hit = await self._artifact_cache.lookup(
+                content_hash=content_hash,
+                agent_name=self.name,
+                agent_version=self.version,
+                require_validated=self._require_validated,
+            )
+            if hit is not None:
+                record_artifact_cache_hit(self.name, payload.tenant_id)
+                log.info(
+                    "quiz.artifact_cache_hit",
+                    extra={
+                        "agent": self.name,
+                        "tenant_id": payload.tenant_id,
+                        "donor_tenant_id": hit.donor_tenant_id,
+                        "hits": hit.hits,
+                        "quality_validated": hit.quality_validated,
+                    },
+                )
+                # Stamp the caller's course_id over the donor's so a
+                # downstream that keys on it doesn't see a foreign id.
+                cached_output = {**hit.output, "course_id": payload.course_id}
+                return QuizGeneratorOutput.model_validate(cached_output)
 
         if self._provider is None:
             return self._stub_response(payload, retrieved_chunks)
@@ -101,11 +145,40 @@ class QuizAgent:
             )
             return self._stub_response(payload, retrieved_chunks)
 
-        return QuizGeneratorOutput(
+        output = QuizGeneratorOutput(
             course_id=payload.course_id,
             title=self._title(payload),
             items=items,
         )
+
+        # Best-effort store. ``quality_validated`` stays False here —
+        # the donor's row gets promoted later by the eval pass (Phase
+        # B-4). Until that lands, callers asking ``require_validated``
+        # are always served fresh.
+        if self._artifact_cache is not None:
+            try:
+                await self._artifact_cache.store(
+                    content_hash=content_hash,
+                    agent_name=self.name,
+                    agent_version=self.version,
+                    output=output.model_dump(mode="json"),
+                    donor_tenant_id=payload.tenant_id,
+                    donor_course_id=payload.course_id,
+                    quality_validated=False,
+                )
+            except Exception as exc:
+                log.warning("quiz.artifact_cache_store_failed err=%s", exc)
+
+        return output
+
+    def _content_hash(
+        self,
+        chunks: list[RetrievedChunk],
+        item_count: int,
+        difficulty: int,
+    ) -> str:
+        base = chunk_set_hash(c.chunk_id for c in chunks)
+        return f"{base}:items={item_count}:diff={difficulty}"
 
     async def _call_llm(
         self,

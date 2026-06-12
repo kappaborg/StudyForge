@@ -14,6 +14,7 @@ import logging
 import re
 from typing import Any
 
+from ..cache import ArtifactCache, chunk_set_hash
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
 )
@@ -21,6 +22,7 @@ from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
+from ..metrics import record_artifact_cache_hit
 from ..safety.prompt_builder import build_messages
 from .contracts import (
     Citation,
@@ -63,11 +65,13 @@ class RoadmapAgent:
         model: str = DEFAULT_MODEL,
         max_output_tokens: int = 1024,
         temperature: float = 0.3,
+        artifact_cache: ArtifactCache | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
+        self._artifact_cache = artifact_cache
 
     async def run(
         self,
@@ -81,6 +85,33 @@ class RoadmapAgent:
                 weeks=payload.weeks,
                 milestones=[],
             )
+
+        # ── course-shared artifact cache lookup ──────────────────────────────
+        # The week count changes the shape of the plan, so it's part of
+        # the key. Roadmaps share unvalidated rows (like flashcards) —
+        # the FE labels donor-shared plans distinctly.
+        content_hash = self._content_hash(retrieved_chunks, payload.weeks)
+        if self._artifact_cache is not None:
+            hit = await self._artifact_cache.lookup(
+                content_hash=content_hash,
+                agent_name=self.name,
+                agent_version=self.version,
+                require_validated=False,
+            )
+            if hit is not None:
+                record_artifact_cache_hit(self.name, payload.tenant_id)
+                log.info(
+                    "roadmap.artifact_cache_hit",
+                    extra={
+                        "agent": self.name,
+                        "tenant_id": payload.tenant_id,
+                        "donor_tenant_id": hit.donor_tenant_id,
+                        "hits": hit.hits,
+                        "quality_validated": hit.quality_validated,
+                    },
+                )
+                cached_output = {**hit.output, "course_id": payload.course_id}
+                return RoadmapPlannerOutput.model_validate(cached_output)
 
         if self._provider is None:
             return self._stub_response(payload, retrieved_chunks)
@@ -99,12 +130,32 @@ class RoadmapAgent:
             )
             return self._stub_response(payload, retrieved_chunks)
 
-        return RoadmapPlannerOutput(
+        output = RoadmapPlannerOutput(
             course_id=payload.course_id,
             title=self._title(payload),
             weeks=payload.weeks,
             milestones=milestones,
         )
+
+        if self._artifact_cache is not None:
+            try:
+                await self._artifact_cache.store(
+                    content_hash=content_hash,
+                    agent_name=self.name,
+                    agent_version=self.version,
+                    output=output.model_dump(mode="json"),
+                    donor_tenant_id=payload.tenant_id,
+                    donor_course_id=payload.course_id,
+                    quality_validated=False,
+                )
+            except Exception as exc:
+                log.warning("roadmap.artifact_cache_store_failed err=%s", exc)
+
+        return output
+
+    def _content_hash(self, chunks: list[RetrievedChunk], weeks: int) -> str:
+        base = chunk_set_hash(c.chunk_id for c in chunks)
+        return f"{base}:weeks={weeks}"
 
     async def _call_llm(
         self,
