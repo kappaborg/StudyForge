@@ -3,11 +3,24 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "echo 'notification-worker is implemented in Phase 2' && exit 0",
-    "build": "echo 'notification-worker is implemented in Phase 2' && exit 0",
-    "lint": "echo 'noop' && exit 0",
-    "typecheck": "echo 'noop' && exit 0",
-    "test": "echo 'noop' && exit 0",
-    "clean": "echo 'noop' && exit 0"
+    "dev": "tsx watch src/main.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "lint": "echo 'noop — handled by typecheck' && exit 0",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "postinstall": "prisma generate --schema=../api/prisma/schema.prisma",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.20.0",
+    "resend": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.4",
+    "prisma": "^5.20.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.0"
   }
 }
