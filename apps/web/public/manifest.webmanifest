@@ -4,10 +4,14 @@
   "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
-  "theme_color": "#000000",
-  "background_color": "#ffffff",
+  "orientation": "portrait-primary",
+  "theme_color": "#0a0a0a",
+  "background_color": "#0a0a0a",
   "description": "AI-powered learning workspace — flashcards, quizzes, roadmaps, and tutor grounded in your materials.",
+  "categories": ["education", "productivity"],
   "icons": [
-    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon1", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icon2", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
   ]
 }

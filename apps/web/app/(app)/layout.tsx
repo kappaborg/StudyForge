@@ -7,7 +7,6 @@ import { Footer } from '../../components/footer';
 import { LocaleSwitcher } from '../../components/locale-switcher';
 import { MobileNavProvider } from '../../components/mobile-nav-provider';
 import { NotificationsBell } from '../../components/notifications-bell';
-import { PwaRegistrar } from '../../components/pwa-registrar';
 import { SearchTrigger } from '../../components/search-trigger';
 import { SelectionMenu } from '../../components/selection-menu';
 import { SidebarToggle } from '../../components/sidebar-toggle';
@@ -110,7 +109,6 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             <Footer />
             <CommandPalette />
             <SelectionMenu />
-            <PwaRegistrar />
             <AxeReporter />
           </div>
         </MobileNavProvider>

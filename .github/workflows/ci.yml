@@ -161,7 +161,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.30.0
         with:
           scan-type: 'fs'
           severity: 'HIGH,CRITICAL'
@@ -266,13 +266,17 @@ jobs:
         image: redis:7-alpine
         ports: ['6379:6379']
     env:
-      DATABASE_URL: postgresql://studyforge:studyforge@localhost:5432/studyforge?schema=public
-      # Same connection — CI has no PgBouncer between us and Postgres, so the
-      # ``directUrl`` channel collapses to the same DSN as ``url``.
-      DIRECT_URL: postgresql://studyforge:studyforge@localhost:5432/studyforge?schema=public
+      # No ``?schema=public`` — Prisma defaults to public, and psycopg
+      # (used by the Python worker) rejects unknown query params.
+      DATABASE_URL: postgresql://studyforge:studyforge@localhost:5432/studyforge
+      DIRECT_URL: postgresql://studyforge:studyforge@localhost:5432/studyforge
       REDIS_URL: redis://localhost:6379
       AUTH_MODE: real
       SESSION_COOKIE_SECRET: ci-smoke-secret-not-used-in-prod
+      # Deterministic 32-byte base64 KEK — CI-only, never used in prod.
+      # The api refuses to boot without one; smoke needs it to clear BYOK
+      # service construction.
+      STUDYFORGE_KEK_BASE64: c3R1ZHlmb3JnZS1jaS1zbW9rZS0zMi1ieXRlLWtlayE=
       API_URL: http://localhost:3001
       WORKER_URL: http://localhost:8001
       AI_WORKER_URL: http://localhost:8001
@@ -324,9 +328,11 @@ jobs:
           echo $! > /tmp/api.pid
 
       - name: Wait for ports
+        # http-get:// forces wait-on to use GET. Default HEAD probes get
+        # 405s from the FastAPI worker's /health route.
         run: |
-          npx --yes wait-on http://localhost:8001/health http://localhost:3001/health \
-            --timeout 60000
+          npx --yes wait-on http-get://localhost:8001/health http-get://localhost:3001/health \
+            --timeout 90000
 
       - name: Run smoke
         run: bash scripts/smoke.sh
