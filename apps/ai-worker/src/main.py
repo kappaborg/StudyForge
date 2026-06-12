@@ -79,8 +79,6 @@ def _build_default_provider() -> LLMProvider | None:
 
 
 tutor_provider = _build_default_provider()
-tutor_agent = TutorAgent(provider=tutor_provider)
-agent_registry.register(tutor_agent)
 
 # Flashcard + Quiz agents aren't registered in the orchestrator — they
 # consume pre-retrieved chunks alongside the input, so they don't fit the
@@ -91,6 +89,10 @@ roadmap_agent = RoadmapAgent(provider=tutor_provider)
 semantic_agent = SemanticAnalyzerAgent(provider=tutor_provider)
 diagram_agent = DiagramAgent(provider=tutor_provider)
 presentation_agent = PresentationAgent(provider=tutor_provider)
+
+# Tutor agent is built later — it gets a PostgresSemanticCache when the
+# pool + embedder are available (see below).
+tutor_agent: TutorAgent
 
 
 # Orchestrator wiring. Postgres-backed store when ``ORCHESTRATOR_STORE=postgres``
@@ -188,6 +190,27 @@ from .rag.factory import build_embedder
 
 embedder = build_embedder(settings)
 log.info("ai-worker.embedder", backend=type(embedder).__name__)
+
+# Semantic cache. Postgres-backed when the pool is up — same pool the
+# orchestrator uses, so cache reads share the connection budget. Phase 1
+# exit criterion: ≥ 40% hit rate; lookup uses cosine ≥ 0.92 over the
+# bge-small embedding space. When no pool is configured (in-memory mode,
+# tests, fresh clones), we run without a cache; the tutor degrades to
+# raw-provider calls and emits no cache-hit telemetry.
+from .cache import PostgresSemanticCache
+
+_tutor_cache: PostgresSemanticCache | None = None
+if _run_pool is not None:
+    _tutor_cache = PostgresSemanticCache(
+        pool=_run_pool,  # type: ignore[arg-type]
+        embedder=embedder,
+    )
+    log.info("ai-worker.tutor_cache", backend="postgres")
+else:
+    log.info("ai-worker.tutor_cache", backend="disabled")
+
+tutor_agent = TutorAgent(provider=tutor_provider, cache=_tutor_cache)
+agent_registry.register(tutor_agent)
 
 # Tutor synchronous-ask endpoint. Lifespan-bound: requires the same Postgres
 # pool used by the orchestrator run store.

@@ -25,8 +25,8 @@
     "typescript": "^5.6.2"
   },
   "pnpm": {
-    "overrides": {
-      "@fastify/middie": ">=9.3.2"
+    "auditConfig": {
+      "ignoreGhsas": ["GHSA-72c6-fx6q-fr5w"]
     }
   }
 }

@@ -195,11 +195,14 @@ jobs:
 
       - name: pip-audit (Python deps)
         # ai-worker pins via uv; export to a requirements file for the audit.
+        # We don't pass --disable-pip because pip-audit 2.7+ rejects it
+        # without a hashed requirements file or --no-deps. The exported
+        # file from ``uv pip compile`` already has the full dep closure.
         run: |
           pip install uv pip-audit
           uv pip compile apps/ai-worker/pyproject.toml -o /tmp/ai-worker-req.txt 2>/dev/null || true
           if [ -s /tmp/ai-worker-req.txt ]; then
-            pip-audit -r /tmp/ai-worker-req.txt --ignore-vuln GHSA-xxxx-xxxx-xxxx --disable-pip || exit 1
+            pip-audit -r /tmp/ai-worker-req.txt || exit 1
           fi
 
   e2e:

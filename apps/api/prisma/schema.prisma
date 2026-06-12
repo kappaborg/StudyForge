@@ -611,8 +611,9 @@ model Concept {
   difficulty  Int                          @default(0) // 0..100
   // Coordinates in the rendered graph (optional layout cache).
   position    Json?
-  // Aggregate embedding for concept-level retrieval.
-  embedding   Unsupported("vector(1024)")?
+  // Aggregate embedding for concept-level retrieval. 384-dim to match
+  // the worker's bge-small embedder (see Document.embedding above).
+  embedding   Unsupported("vector(384)")?
   createdAt   DateTime                     @default(now())
   updatedAt   DateTime                     @updatedAt
 
@@ -1092,14 +1093,16 @@ model SharedArtifact {
   @@index([qualityValidated])
 }
 
-/// Semantic cache reference. `queryEmbedding` is the BGE-M3 embedding of the
-/// normalized query; `chunkSetHash` is the sha256 of the retrieved chunk IDs.
+/// Semantic cache reference. `queryEmbedding` is the bge-small embedding of
+/// the normalized query (384 dims, normalised — cosine equivalent to dot
+/// product); `chunkSetHash` is the sha256 of the retrieved chunk IDs at the
+/// time the row was written, so corpus changes silently invalidate the entry.
 model CachedResponse {
   id             String                      @id @default(uuid()) @db.Uuid
   tenantId       String                      @db.Uuid
   tenant         Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   courseId       String?                     @db.Uuid
-  queryEmbedding Unsupported("vector(1024)")
+  queryEmbedding Unsupported("vector(384)")
   chunkSetHash   String                      @db.Citext
   response       String
   citationsJson  Json
