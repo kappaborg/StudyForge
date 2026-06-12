@@ -105,10 +105,17 @@ def test_registry_wires_ollama_only_when_explicitly_enabled() -> None:
     assert on.get("ollama").id == "ollama"
 
 
+def test_registry_wires_gemini_when_key_present() -> None:
+    reg = ProviderRegistry(ProviderCredentials(gemini_api_key="AIza-x"))
+    assert reg.has("gemini")
+    assert reg.get("gemini").id == "gemini"
+
+
 def test_registry_with_all_providers_lists_all() -> None:
     reg = ProviderRegistry(
         ProviderCredentials(
             groq_api_key="gsk-x",
+            gemini_api_key="AIza-x",
             openai_api_key="sk-x",
             anthropic_api_key="sk-ant-x",
             openrouter_api_key="sk-or-x",
@@ -122,6 +129,7 @@ def test_registry_with_all_providers_lists_all() -> None:
         "anthropic",
         "cerebras",
         "fireworks",
+        "gemini",
         "groq",
         "ollama",
         "openai",
@@ -148,7 +156,20 @@ def test_preferred_free_provider_picks_groq_first_when_configured() -> None:
     assert picked.id == "groq"
 
 
-def test_preferred_free_provider_falls_through_to_cerebras_when_no_groq() -> None:
+def test_preferred_free_provider_picks_gemini_second_when_no_groq() -> None:
+    reg = ProviderRegistry(
+        ProviderCredentials(
+            gemini_api_key="AIza-x",
+            cerebras_api_key="csk-x",
+            openai_api_key="sk-x",
+        )
+    )
+    picked = reg.preferred_free_provider()
+    assert picked is not None
+    assert picked.id == "gemini"
+
+
+def test_preferred_free_provider_falls_through_to_cerebras_when_no_groq_or_gemini() -> None:
     reg = ProviderRegistry(
         ProviderCredentials(
             cerebras_api_key="csk-x",

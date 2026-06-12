@@ -24,6 +24,7 @@ from .anthropic import AnthropicProvider
 from .cerebras import CerebrasProvider
 from .contracts import LLMProvider
 from .fireworks import FireworksProvider
+from .gemini import GeminiProvider
 from .groq import GroqProvider
 from .ollama import OllamaProvider
 from .openai import OpenAIProvider
@@ -37,6 +38,7 @@ log = logging.getLogger(__name__)
 # adapter when no specific provider was requested.
 FREE_TIER_PREFERENCE: tuple[str, ...] = (
     "groq",
+    "gemini",
     "cerebras",
     "openrouter",
     "together",
@@ -53,6 +55,7 @@ class ProviderCredentials:
     skips the adapter rather than failing to boot."""
 
     groq_api_key: str | None = None
+    gemini_api_key: str | None = None
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     openrouter_api_key: str | None = None
@@ -74,6 +77,9 @@ class ProviderRegistry:
 
         if creds.groq_api_key:
             self._register("groq", GroqProvider(api_key=creds.groq_api_key))
+
+        if creds.gemini_api_key:
+            self._register("gemini", GeminiProvider(api_key=creds.gemini_api_key))
 
         if creds.openai_api_key:
             self._register("openai", OpenAIProvider(api_key=creds.openai_api_key))

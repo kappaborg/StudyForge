@@ -84,12 +84,12 @@ ok "folder=${FID:0:8}"
 note '3. YouTube ingest'
 if [ "${SKIP_YOUTUBE_INGEST:-}" = "true" ]; then
   echo "  ⊘ skipped (SKIP_YOUTUBE_INGEST=true — live YouTube rate-limits CI)"
-  # Stand in with a manually-seeded document so downstream stages have a
-  # document to attach to. The YouTube path is covered separately by the
-  # ai-worker's unit tests.
-  ING=$(post "$JAR_A" /v1/documents "{\"folderId\":\"$FID\",\"title\":\"Smoke test document\",\"contentMd\":\"# Test\\nRetrieval-augmented generation is a technique that grounds LLM responses in retrieved chunks.\"}")
+  # Stand in with a manually-seeded document via /v1/uploads/text so
+  # downstream stages have a document to attach to. The YouTube path is
+  # covered separately by the ai-worker's unit tests.
+  ING=$(post "$JAR_A" /v1/uploads/text "{\"folderId\":\"$FID\",\"title\":\"Smoke test document\",\"text\":\"Retrieval-augmented generation is a technique that grounds LLM responses in retrieved chunks. RAG combines a retriever and a generator to produce cited answers.\"}")
   DOC=$(extract "$ING" "d['documentId']")
-  CHUNKS=$(extract "$ING" "d.get('chunkCount', 1)")
+  CHUNKS=$(extract "$ING" "d['chunkCount']")
 else
   ING=$(post "$JAR_A" /v1/uploads/youtube "{\"url\":\"$YOUTUBE_URL\",\"folderId\":\"$FID\"}")
   DOC=$(extract "$ING" "d['documentId']")

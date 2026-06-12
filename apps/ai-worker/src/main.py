@@ -58,6 +58,7 @@ settings = get_settings()
 provider_registry = ProviderRegistry(
     ProviderCredentials(
         groq_api_key=settings.groq_api_key,
+        gemini_api_key=settings.gemini_api_key,
         openai_api_key=settings.openai_api_key,
         anthropic_api_key=settings.anthropic_api_key,
         openrouter_api_key=settings.openrouter_api_key,
