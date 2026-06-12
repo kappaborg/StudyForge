@@ -26,6 +26,7 @@ from .contracts import LLMProvider
 from .fireworks import FireworksProvider
 from .gemini import GeminiProvider
 from .groq import GroqProvider
+from .metered import MeteredProvider
 from .ollama import OllamaProvider
 from .openai import OpenAIProvider
 from .openrouter import OpenRouterProvider
@@ -114,7 +115,11 @@ class ProviderRegistry:
         )
 
     def _register(self, provider_id: str, adapter: LLMProvider) -> None:
-        self._adapters[provider_id] = adapter
+        # Wrap every adapter in MeteredProvider so every successful
+        # ``complete()`` / final streaming chunk increments the Prometheus
+        # counters in src/metrics.py. ``_owns`` keeps the *inner* adapter
+        # so ``aclose()`` closes the real httpx client.
+        self._adapters[provider_id] = MeteredProvider(adapter)
         self._owns.append(adapter)
 
     def get(self, provider_id: str) -> LLMProvider:
