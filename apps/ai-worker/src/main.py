@@ -84,8 +84,6 @@ tutor_provider = _build_default_provider()
 # Flashcard + Quiz agents aren't registered in the orchestrator — they
 # consume pre-retrieved chunks alongside the input, so they don't fit the
 # single-payload ``Agent`` protocol. Their HTTP routers wire retrieval + run.
-semantic_agent = SemanticAnalyzerAgent(provider=tutor_provider)
-diagram_agent = DiagramAgent(provider=tutor_provider)
 presentation_agent = PresentationAgent(provider=tutor_provider)
 
 # Tutor agent is built later — it gets a PostgresSemanticCache when the
@@ -227,6 +225,8 @@ else:
 flashcard_agent = FlashcardAgent(provider=tutor_provider, artifact_cache=_artifact_cache)
 quiz_agent = QuizAgent(provider=tutor_provider, artifact_cache=_artifact_cache)
 roadmap_agent = RoadmapAgent(provider=tutor_provider, artifact_cache=_artifact_cache)
+semantic_agent = SemanticAnalyzerAgent(provider=tutor_provider, artifact_cache=_artifact_cache)
+diagram_agent = DiagramAgent(provider=tutor_provider, artifact_cache=_artifact_cache)
 
 # Tutor synchronous-ask endpoint. Lifespan-bound: requires the same Postgres
 # pool used by the orchestrator run store.

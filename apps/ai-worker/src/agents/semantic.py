@@ -15,6 +15,7 @@ import re
 import uuid
 from typing import Any
 
+from ..cache import ArtifactCache, chunk_set_hash
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
 )
@@ -22,6 +23,7 @@ from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
+from ..metrics import record_artifact_cache_hit
 from ..safety.prompt_builder import build_messages
 from .contracts import (
     Concept,
@@ -73,11 +75,13 @@ class SemanticAnalyzerAgent:
         model: str = DEFAULT_MODEL,
         max_output_tokens: int = 1024,
         temperature: float = 0.2,
+        artifact_cache: ArtifactCache | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
+        self._artifact_cache = artifact_cache
 
     async def run(
         self,
@@ -91,6 +95,36 @@ class SemanticAnalyzerAgent:
                 edges=[],
                 refs=[],
             )
+
+        # ── course-shared artifact cache lookup ──────────────────────────────
+        # The concept graph's shape changes with ``max_concepts`` (a tight
+        # cap produces a denser graph; a loose cap a wider one), so it's
+        # part of the key. Concepts share unvalidated rows — the FE
+        # labels donor-shared graphs distinctly.
+        content_hash = self._content_hash(retrieved_chunks, payload.max_concepts)
+        if self._artifact_cache is not None:
+            hit = await self._artifact_cache.lookup(
+                content_hash=content_hash,
+                agent_name=self.name,
+                agent_version=self.version,
+                require_validated=False,
+            )
+            if hit is not None:
+                record_artifact_cache_hit(self.name, payload.tenant_id)
+                log.info(
+                    "semantic.artifact_cache_hit",
+                    extra={
+                        "agent": self.name,
+                        "tenant_id": payload.tenant_id,
+                        "donor_tenant_id": hit.donor_tenant_id,
+                        "hits": hit.hits,
+                        "quality_validated": hit.quality_validated,
+                    },
+                )
+                # Restamp caller's course_id over the donor's.
+                cached_output = {**hit.output, "course_id": payload.course_id}
+                return ConceptExtractionResult.model_validate(cached_output)
+
         if self._provider is None:
             return self._stub_response(payload, retrieved_chunks)
 
@@ -107,7 +141,30 @@ class SemanticAnalyzerAgent:
                 [c.chunk_id for c in retrieved_chunks],
             )
             return self._stub_response(payload, retrieved_chunks)
+
+        if self._artifact_cache is not None:
+            try:
+                await self._artifact_cache.store(
+                    content_hash=content_hash,
+                    agent_name=self.name,
+                    agent_version=self.version,
+                    output=parsed.model_dump(mode="json"),
+                    donor_tenant_id=payload.tenant_id,
+                    donor_course_id=payload.course_id,
+                    quality_validated=False,
+                )
+            except Exception as exc:
+                log.warning("semantic.artifact_cache_store_failed err=%s", exc)
+
         return parsed
+
+    def _content_hash(
+        self,
+        chunks: list[RetrievedChunk],
+        max_concepts: int,
+    ) -> str:
+        base = chunk_set_hash(c.chunk_id for c in chunks)
+        return f"{base}:max={max_concepts}"
 
     # ── LLM call ─────────────────────────────────────────────────────────────
 

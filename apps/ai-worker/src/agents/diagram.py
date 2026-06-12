@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Any
 
+from ..cache import ArtifactCache, chunk_set_hash
 from ..llm.contracts import (
     ChannelMessage as LLMChannelMessage,
 )
@@ -19,6 +20,7 @@ from ..llm.contracts import (
     LLMProvider,
     LLMRequest,
 )
+from ..metrics import record_artifact_cache_hit
 from ..safety.prompt_builder import build_messages
 from .contracts import (
     DiagramAgentOutput,
@@ -70,11 +72,13 @@ class DiagramAgent:
         model: str = DEFAULT_MODEL,
         max_output_tokens: int = 1024,
         temperature: float = 0.2,
+        artifact_cache: ArtifactCache | None = None,
     ) -> None:
         self._provider = provider
         self._model = model
         self._max_output_tokens = max_output_tokens
         self._temperature = temperature
+        self._artifact_cache = artifact_cache
 
     async def run(
         self,
@@ -87,6 +91,34 @@ class DiagramAgent:
                 renderer="mermaid",
                 source=self._stub_dsl(payload, []),
             )
+
+        # ── course-shared artifact cache lookup ──────────────────────────────
+        # ``kind`` literally selects which Mermaid DSL we emit (flowchart
+        # vs mindmap vs sequence) — entirely different output shape — so
+        # it's part of the key.
+        content_hash = self._content_hash(retrieved_chunks, payload.kind)
+        if self._artifact_cache is not None:
+            hit = await self._artifact_cache.lookup(
+                content_hash=content_hash,
+                agent_name=self.name,
+                agent_version=self.version,
+                require_validated=False,
+            )
+            if hit is not None:
+                record_artifact_cache_hit(self.name, payload.tenant_id)
+                log.info(
+                    "diagram.artifact_cache_hit",
+                    extra={
+                        "agent": self.name,
+                        "tenant_id": payload.tenant_id,
+                        "donor_tenant_id": hit.donor_tenant_id,
+                        "hits": hit.hits,
+                        "quality_validated": hit.quality_validated,
+                    },
+                )
+                cached_output = {**hit.output, "course_id": payload.course_id}
+                return DiagramAgentOutput.model_validate(cached_output)
+
         if self._provider is None:
             return DiagramAgentOutput(
                 course_id=payload.course_id,
@@ -111,11 +143,35 @@ class DiagramAgent:
                 payload.kind,
             )
             dsl = self._stub_dsl(payload, retrieved_chunks)
-        return DiagramAgentOutput(
+        output = DiagramAgentOutput(
             course_id=payload.course_id,
             renderer="mermaid",
             source=dsl,
         )
+
+        if self._artifact_cache is not None:
+            try:
+                await self._artifact_cache.store(
+                    content_hash=content_hash,
+                    agent_name=self.name,
+                    agent_version=self.version,
+                    output=output.model_dump(mode="json"),
+                    donor_tenant_id=payload.tenant_id,
+                    donor_course_id=payload.course_id,
+                    quality_validated=False,
+                )
+            except Exception as exc:
+                log.warning("diagram.artifact_cache_store_failed err=%s", exc)
+
+        return output
+
+    def _content_hash(
+        self,
+        chunks: list[RetrievedChunk],
+        kind: str,
+    ) -> str:
+        base = chunk_set_hash(c.chunk_id for c in chunks)
+        return f"{base}:kind={kind}"
 
     async def _call_llm(
         self,
