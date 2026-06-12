@@ -30,6 +30,7 @@ from ..llm.contracts import (
     LLMRequest,
     LLMResponse,
 )
+from ..metrics import record_cache_hit, record_provider_call
 from ..safety.prompt_builder import build_messages
 from .contracts import (
     Citation,
@@ -125,6 +126,7 @@ class TutorAgent:
         chunk_hash = chunk_set_hash(c.chunk_id for c in supportive)
         cached = await self._lookup_cache(payload, chunk_hash)
         if cached is not None:
+            record_cache_hit(payload.tenant_id)
             log.info(
                 "tutor.cache_hit",
                 extra={
@@ -149,6 +151,14 @@ class TutorAgent:
         except Exception as exc:
             log.exception("tutor LLM call failed: %s", exc)
             return self._refuse_llm_error(payload, supportive)
+
+        record_provider_call(
+            response.provider_id,
+            tokens_in=response.usage.tokens_in,
+            tokens_out=response.usage.tokens_out,
+            cached_in=response.usage.cached_tokens_in,
+            cache_hit=response.usage.cache_hit,
+        )
 
         # Cost telemetry. Logged WITHOUT message content so the audit + log
         # pipeline never carries student PII or chunk text. Downstream cost

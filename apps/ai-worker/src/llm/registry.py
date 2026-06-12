@@ -138,11 +138,16 @@ class ProviderRegistry:
         Returns ``None`` when no provider is configured — callers should
         fall back to the stub response path (the tutor demonstrates this
         pattern). Used by the default-provider builder during boot when
-        no specific provider is pinned.
+        no specific provider is pinned. Emits one
+        ``studyforge_router_decision_total`` increment per call so the
+        Grafana % cost-free panel has data.
         """
+        from ..metrics import record_router_decision
+
         for provider_id in FREE_TIER_PREFERENCE:
             adapter = self._adapters.get(provider_id)
             if adapter is not None:
+                record_router_decision(provider_id)
                 return adapter
         return None
 

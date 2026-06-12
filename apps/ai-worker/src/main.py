@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import PlainTextResponse
 
 from .agents import registry as agent_registry
 from .agents.diagram import DiagramAgent
@@ -305,6 +306,19 @@ if _run_pool is not None:
             get_provider=_get_provider,
         )
     )
+
+
+@app.get("/metrics", tags=["observability"], response_class=PlainTextResponse)
+def metrics() -> str:
+    """Prometheus scrape endpoint. Exposes the counters defined in
+    ``src/metrics.py``; the Grafana ``platform-cost`` dashboard reads
+    them. Returns text/plain in the OpenMetrics exposition format."""
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    # We could set the content-type via Response, but Prometheus auto-
+    # negotiates and PlainTextResponse keeps the signature simple.
+    _ = CONTENT_TYPE_LATEST  # reserved for explicit headers later
+    return generate_latest().decode("utf-8")
 
 
 @app.get("/health", tags=["health"])

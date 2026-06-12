@@ -32,6 +32,7 @@ dependencies = [
   "nbformat>=5.10.4",
   "python-pptx>=1.0.2",
   "fastembed>=0.8.0",
+  "prometheus-client>=0.21.0",
 ]
 
 [project.optional-dependencies]
