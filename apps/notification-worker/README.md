@@ -13,10 +13,17 @@ Every `NOTIFICATION_TICK_MS` (default 30000):
    `createdAt ASC`. Postgres `FOR UPDATE SKIP LOCKED` makes this safe
    under multiple worker instances.
 2. Look up the recipient. If the user was deleted between enqueue and
-   dispatch, mark `failed` (terminal — v1 has no retry counter).
-3. Call Resend with `from`, `to`, `subject`, `text`. Success →
-   `state='delivered'`, `deliveredAt=now()`. Resend error or thrown
-   exception → `state='failed'`.
+   dispatch, mark `failed` (terminal — `no-recipient` is permanent).
+3. Call Resend with `from`, `to`, `subject`, `text`.
+   - Success → `state='delivered'`, `deliveredAt=now()`.
+   - Permanent failure (`invalid_email`, `domain_not_verified`,
+     `from_address_not_allowed`, etc.) → `state='failed'`,
+     `lastErrorReason=<label>`. No retry.
+   - Transient failure (thrown exception, rate-limit, unknown Resend
+     error) → bump `retryCount`, set `scheduledFor` to the next-retry
+     deadline via exponential backoff (1m → 5m → 30m → 2h → 12h),
+     keep `state='queued'`. Once `retryCount` passes `MAX_RETRIES`
+     (default 5), the row goes terminal `failed`.
 4. Loop up to `NOTIFICATION_MAX_PER_TICK` (default 25) before sleeping.
 
 When `RESEND_API_KEY` is unset, the worker runs in **dryrun mode**:
@@ -39,6 +46,7 @@ pnpm --filter notification-worker build && pnpm --filter notification-worker sta
 | `EMAIL_FROM` | `StudyForge <onboarding@resend.dev>` | Verify a real domain in Resend before sending to non-account-owner addresses. |
 | `NOTIFICATION_TICK_MS` | `30000` | Poll cadence. |
 | `NOTIFICATION_MAX_PER_TICK` | `25` | Backlog drain cap per tick. |
+| `NOTIFICATION_MAX_RETRIES` | `5` | Transient-failure retry budget before the row goes terminal `failed`. |
 | `PORT` | `8002` | HTTP `/health` endpoint for Render liveness. |
 
 ## Test
@@ -58,7 +66,7 @@ notification delivery.
 
 ## Open
 
-- [ ] Persistent retry counter — v1 marks `failed` on first error.
 - [ ] Web push (VAPID) — Phase 3.
 - [ ] MJML templates + i18n bundles — Phase 4.
 - [ ] PostHog delivery telemetry.
+- [ ] Per-channel retry budget tuning (push tolerates fewer retries than email).
