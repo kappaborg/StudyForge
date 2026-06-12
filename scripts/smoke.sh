@@ -82,9 +82,19 @@ FID=$(echo "$FOLDERS" | python3 -c "import sys,json; print([f['id'] for f in jso
 ok "folder=${FID:0:8}"
 
 note '3. YouTube ingest'
-ING=$(post "$JAR_A" /v1/uploads/youtube "{\"url\":\"$YOUTUBE_URL\",\"folderId\":\"$FID\"}")
-DOC=$(extract "$ING" "d['documentId']")
-CHUNKS=$(extract "$ING" "d['chunkCount']")
+if [ "${SKIP_YOUTUBE_INGEST:-}" = "true" ]; then
+  echo "  ⊘ skipped (SKIP_YOUTUBE_INGEST=true — live YouTube rate-limits CI)"
+  # Stand in with a manually-seeded document so downstream stages have a
+  # document to attach to. The YouTube path is covered separately by the
+  # ai-worker's unit tests.
+  ING=$(post "$JAR_A" /v1/documents "{\"folderId\":\"$FID\",\"title\":\"Smoke test document\",\"contentMd\":\"# Test\\nRetrieval-augmented generation is a technique that grounds LLM responses in retrieved chunks.\"}")
+  DOC=$(extract "$ING" "d['documentId']")
+  CHUNKS=$(extract "$ING" "d.get('chunkCount', 1)")
+else
+  ING=$(post "$JAR_A" /v1/uploads/youtube "{\"url\":\"$YOUTUBE_URL\",\"folderId\":\"$FID\"}")
+  DOC=$(extract "$ING" "d['documentId']")
+  CHUNKS=$(extract "$ING" "d['chunkCount']")
+fi
 ok "doc=${DOC:0:8} chunks=$CHUNKS"
 
 note '4. manual flashcard'

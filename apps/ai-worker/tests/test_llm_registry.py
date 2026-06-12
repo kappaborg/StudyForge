@@ -64,3 +64,114 @@ async def test_registry_aclose_closes_owned_clients() -> None:
         )
     )
     await reg.aclose()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Phase B-1 — 5 new OpenAI-compatible free-tier adapters
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_registry_wires_openrouter_when_key_present() -> None:
+    reg = ProviderRegistry(ProviderCredentials(openrouter_api_key="sk-or-x"))
+    assert reg.has("openrouter")
+    assert reg.get("openrouter").id == "openrouter"
+
+
+def test_registry_wires_cerebras_when_key_present() -> None:
+    reg = ProviderRegistry(ProviderCredentials(cerebras_api_key="csk-x"))
+    assert reg.has("cerebras")
+    assert reg.get("cerebras").id == "cerebras"
+
+
+def test_registry_wires_together_when_key_present() -> None:
+    reg = ProviderRegistry(ProviderCredentials(together_api_key="tg-x"))
+    assert reg.has("together")
+    assert reg.get("together").id == "together"
+
+
+def test_registry_wires_fireworks_when_key_present() -> None:
+    reg = ProviderRegistry(ProviderCredentials(fireworks_api_key="fw-x"))
+    assert reg.has("fireworks")
+    assert reg.get("fireworks").id == "fireworks"
+
+
+def test_registry_wires_ollama_only_when_explicitly_enabled() -> None:
+    """Ollama doesn't authenticate, so the registry can't tell from
+    credentials whether the local daemon is running. Opt-in is explicit."""
+    off = ProviderRegistry(ProviderCredentials())
+    on = ProviderRegistry(ProviderCredentials(enable_ollama=True))
+    assert not off.has("ollama")
+    assert on.has("ollama")
+    assert on.get("ollama").id == "ollama"
+
+
+def test_registry_with_all_providers_lists_all() -> None:
+    reg = ProviderRegistry(
+        ProviderCredentials(
+            groq_api_key="gsk-x",
+            openai_api_key="sk-x",
+            anthropic_api_key="sk-ant-x",
+            openrouter_api_key="sk-or-x",
+            cerebras_api_key="csk-x",
+            together_api_key="tg-x",
+            fireworks_api_key="fw-x",
+            enable_ollama=True,
+        )
+    )
+    assert reg.available_provider_ids() == [
+        "anthropic",
+        "cerebras",
+        "fireworks",
+        "groq",
+        "ollama",
+        "openai",
+        "openrouter",
+        "together",
+    ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Free-tier preference ordering (§13.1)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_preferred_free_provider_picks_groq_first_when_configured() -> None:
+    reg = ProviderRegistry(
+        ProviderCredentials(
+            groq_api_key="gsk-x",
+            openai_api_key="sk-x",
+            anthropic_api_key="sk-ant-x",
+        )
+    )
+    picked = reg.preferred_free_provider()
+    assert picked is not None
+    assert picked.id == "groq"
+
+
+def test_preferred_free_provider_falls_through_to_cerebras_when_no_groq() -> None:
+    reg = ProviderRegistry(
+        ProviderCredentials(
+            cerebras_api_key="csk-x",
+            openai_api_key="sk-x",
+            anthropic_api_key="sk-ant-x",
+        )
+    )
+    picked = reg.preferred_free_provider()
+    assert picked is not None
+    assert picked.id == "cerebras"
+
+
+def test_preferred_free_provider_paid_providers_are_last_resort() -> None:
+    # OpenAI / Anthropic are the bottom of the preference list — only
+    # picked when no free provider is configured.
+    reg = ProviderRegistry(
+        ProviderCredentials(anthropic_api_key="sk-ant-x", openai_api_key="sk-x")
+    )
+    picked = reg.preferred_free_provider()
+    assert picked is not None
+    assert picked.id == "openai"  # openai before anthropic per §13.1
+
+
+def test_preferred_free_provider_returns_none_when_nothing_configured() -> None:
+    reg = ProviderRegistry(ProviderCredentials())
+    assert reg.preferred_free_provider() is None

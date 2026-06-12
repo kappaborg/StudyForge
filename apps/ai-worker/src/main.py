@@ -38,8 +38,8 @@ from .api.runs import build_router as build_runs_router
 from .api.semantic import build_router as build_semantic_router
 from .api.tutor import build_router as build_tutor_router
 from .api.tutor_stream import build_router as build_tutor_stream_router
-from .llm import GroqProvider
 from .llm.contracts import LLMProvider
+from .llm.registry import ProviderCredentials, ProviderRegistry
 from .orchestrator import (
     InMemoryRunStore,
     Orchestrator,
@@ -51,13 +51,30 @@ from .settings import get_settings
 settings = get_settings()
 
 
-# Provider wiring. When ``GROQ_API_KEY`` is set, the tutor makes real LLM
-# calls. When unset (the default in CI and on fresh clones), the tutor
-# returns its labelled stub path so dev runs work without an API key.
+# Provider wiring. Builds a registry of every adapter for which a key is
+# present in the environment, then exposes the §13.1 free-tier-preferred
+# adapter as ``tutor_provider``. When no provider is configured the tutor
+# falls back to its labelled stub path so dev runs still work.
+provider_registry = ProviderRegistry(
+    ProviderCredentials(
+        groq_api_key=settings.groq_api_key,
+        openai_api_key=settings.openai_api_key,
+        anthropic_api_key=settings.anthropic_api_key,
+        openrouter_api_key=settings.openrouter_api_key,
+        cerebras_api_key=settings.cerebras_api_key,
+        together_api_key=settings.together_api_key,
+        fireworks_api_key=settings.fireworks_api_key,
+        # Ollama auto-registers when the base URL is reachable. We don't
+        # probe at boot — too slow on cold start — so this flag is for now
+        # opt-in via env. Phase B-2 adds a real reachability probe.
+        enable_ollama=False,
+        ollama_base_url=settings.ollama_base_url,
+    )
+)
+
+
 def _build_default_provider() -> LLMProvider | None:
-    if settings.groq_api_key:
-        return GroqProvider(api_key=settings.groq_api_key)
-    return None
+    return provider_registry.preferred_free_provider()
 
 
 tutor_provider = _build_default_provider()
