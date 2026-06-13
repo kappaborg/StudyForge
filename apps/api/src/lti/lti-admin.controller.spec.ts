@@ -1,5 +1,4 @@
 import { Test } from '@nestjs/testing';
-import { ForbiddenException } from '@nestjs/common';
 import { LtiAdminController } from './lti-admin.controller';
 import { PrismaService } from '../prisma/prisma.service';
 import { ProblemException } from '../common/problem';
@@ -93,25 +92,16 @@ function makeFakePrisma(state: FakePrismaState): PrismaService {
   } as unknown as PrismaService;
 }
 
-const STUDENT: AuthContext = {
-  userId: 'u-student',
-  tenantId: 't',
-  email: 's@x.com',
-  role: 'student',
-};
+// Note: role-based authorization is enforced by ``RolesGuard`` (see
+// ``roles.guard.spec.ts``), not by the controller method itself. These
+// tests invoke the method directly to verify business logic — the
+// guard never runs at this layer.
 
 const ADMIN: AuthContext = {
   userId: 'u-admin',
   tenantId: 't',
   email: 'a@x.com',
   role: 'admin',
-};
-
-const INST_ADMIN: AuthContext = {
-  userId: 'u-iadmin',
-  tenantId: 't',
-  email: 'ia@x.com',
-  role: 'institution_admin',
 };
 
 const VALID_DTO = {
@@ -132,32 +122,6 @@ async function makeCtl(state: FakePrismaState): Promise<LtiAdminController> {
 }
 
 describe('LtiAdminController', () => {
-  describe('RBAC', () => {
-    it('refuses student callers on register', async () => {
-      const ctl = await makeCtl({ institutions: [] });
-      await expect(ctl.registerPlatform(STUDENT, VALID_DTO)).rejects.toThrow(
-        ForbiddenException,
-      );
-    });
-
-    it('refuses student callers on list', async () => {
-      const ctl = await makeCtl({ institutions: [] });
-      await expect(ctl.listPlatforms(STUDENT)).rejects.toThrow(ForbiddenException);
-    });
-
-    it('allows admin role', async () => {
-      const ctl = await makeCtl({ institutions: [] });
-      const row = await ctl.registerPlatform(ADMIN, VALID_DTO);
-      expect(row.ltiIssuer).toBe(VALID_DTO.ltiIssuer);
-    });
-
-    it('allows institution_admin role', async () => {
-      const ctl = await makeCtl({ institutions: [] });
-      const row = await ctl.registerPlatform(INST_ADMIN, VALID_DTO);
-      expect(row.ltiIssuer).toBe(VALID_DTO.ltiIssuer);
-    });
-  });
-
   describe('register upsert behaviour', () => {
     it('creates a new institution on first registration', async () => {
       const state: FakePrismaState = { institutions: [] };

@@ -1,7 +1,6 @@
 import {
   Body,
   Controller,
-  ForbiddenException,
   Get,
   HttpCode,
   Logger,
@@ -11,6 +10,7 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
 import { CurrentUser } from '../auth/current-user.decorator';
 import type { AuthContext } from '../auth/auth.context';
+import { Roles } from '../auth/roles.decorator';
 import { ProblemException } from '../common/problem';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -38,9 +38,10 @@ interface InstitutionRow {
 /**
  * Ops surface for LTI platform registration.
  *
- * Until Phase B-4 lands a real RBAC decorator, the endpoints gate on
- * ``user.role in {admin, institution_admin}`` inline. Anyone else gets
- * a 403; we'd rather refuse early than ship a tenant takeover path.
+ * Authorization is via the ``@Roles`` decorator: both endpoints accept
+ * ``admin`` and ``institution_admin``. The ``RolesGuard`` mounted on
+ * ``LtiModule`` consumes the metadata and 403s anyone else before the
+ * handler runs.
  */
 @ApiTags('lti-admin')
 @Controller('admin/lti')
@@ -51,6 +52,7 @@ export class LtiAdminController {
 
   @Post('platforms')
   @HttpCode(201)
+  @Roles('admin', 'institution_admin')
   @ApiOperation({
     summary:
       'Register an LTI 1.3 platform. Upserts on ltiIssuer so a Canvas/Moodle/Blackboard re-registration just rewrites the keyset URL.',
@@ -59,7 +61,6 @@ export class LtiAdminController {
     @CurrentUser() user: AuthContext,
     @Body() dto: RegisterPlatformDto,
   ): Promise<InstitutionRow> {
-    requireAdmin(user);
 
     // Upsert on ``ltiIssuer`` (the schema's @unique index) so calling
     // this endpoint again with a new ``ltiJwksUri`` is a clean key
@@ -107,27 +108,19 @@ export class LtiAdminController {
 
   @Get('platforms')
   @HttpCode(200)
+  @Roles('admin', 'institution_admin')
   @ApiOperation({
     summary: 'List registered LTI platforms (ops visibility, no secrets exposed)',
   })
   async listPlatforms(
-    @CurrentUser() user: AuthContext,
+    @CurrentUser() _user: AuthContext,
   ): Promise<{ platforms: InstitutionRow[] }> {
-    requireAdmin(user);
     const rows = await this.prisma.institution.findMany({
       where: { ltiIssuer: { not: null }, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       take: 200,
     });
     return { platforms: rows.map(rowOf) };
-  }
-}
-
-function requireAdmin(user: AuthContext): void {
-  if (user.role !== 'admin' && user.role !== 'institution_admin') {
-    throw new ForbiddenException(
-      'LTI admin endpoints require admin or institution_admin role',
-    );
   }
 }
 

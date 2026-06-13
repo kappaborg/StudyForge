@@ -5,11 +5,13 @@ import type { FastifyRequest } from 'fastify';
  * and later by the real OAuth flow (Phase 1 mid). Production code reads from
  * here exclusively — never from headers directly.
  */
+export type UserRole = 'student' | 'instructor' | 'admin' | 'institution_admin';
+
 export interface AuthContext {
   userId: string;
   tenantId: string;
   email: string;
-  role: 'student' | 'instructor' | 'admin' | 'institution_admin';
+  role: UserRole;
 }
 
 const STORE_KEY = '_studyforgeAuth';
