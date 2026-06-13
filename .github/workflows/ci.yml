@@ -156,6 +156,15 @@ jobs:
         # signals are platform-dependent but the cap engagement isn't.
         run: uv run pytest -q
 
+      - name: Build Dockerfile (smoke)
+        # ``docker build`` rather than ``docker buildx`` keeps the step
+        # cheap — we're only catching syntax / dep / COPY regressions
+        # here. The image isn't pushed; the runner discards it. Build
+        # context resets to the repo root so the Dockerfile's
+        # ``COPY apps/sandbox-runner/...`` lines resolve.
+        working-directory: ${{ github.workspace }}
+        run: docker build -f apps/sandbox-runner/Dockerfile -t studyforge-sandbox-runner:ci .
+
   ai-eval:
     name: AI · golden eval (structural)
     needs: [changes, python]
