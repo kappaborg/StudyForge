@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { apiGet, ApiError } from '../lib/dev-fetch';
+import { apiGetCachedWithMeta, ApiError } from '../lib/dev-fetch';
+import { formatCacheAge } from '../lib/format-cache-age';
 import { FeatureFlagsPanel } from './feature-flags-panel';
 
 interface Overview {
@@ -52,18 +53,37 @@ export function InstructorDashboard() {
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [abuse, setAbuse] = useState<AbuseRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  // Offline-cache surface, parity with the roadmap + concept-graph
+  // viewers (D-0b / D-3). The dashboard hits 3 endpoints; we show ONE
+  // banner using the OLDEST cached snapshot so the instructor never
+  // thinks "Courses is from 2 minutes ago but Abuse is from yesterday."
+  const [oldestCachedAt, setOldestCachedAt] = useState<number | null>(null);
+  const [anyFromCache, setAnyFromCache] = useState(false);
 
   const refresh = async () => {
     setError(null);
     try {
       const [o, c, a] = await Promise.all([
-        apiGet<Overview>('/v1/instructor/overview'),
-        apiGet<{ courses: CourseRow[] }>('/v1/instructor/courses'),
-        apiGet<{ items: AbuseRow[] }>('/v1/instructor/abuse'),
+        apiGetCachedWithMeta<Overview>('/v1/instructor/overview'),
+        apiGetCachedWithMeta<{ courses: CourseRow[] }>('/v1/instructor/courses'),
+        apiGetCachedWithMeta<{ items: AbuseRow[] }>('/v1/instructor/abuse'),
       ]);
-      setOverview(o);
-      setCourses(c.courses);
-      setAbuse(a.items);
+      setOverview(o.value);
+      setCourses(c.value.courses);
+      setAbuse(a.value.items);
+
+      const cached = [o, c, a].filter((r) => r.fromCache);
+      setAnyFromCache(cached.length > 0);
+      if (cached.length === 0) {
+        setOldestCachedAt(null);
+      } else {
+        // ``Math.min`` of the available timestamps — the oldest snapshot
+        // is what determines the trust level. ``null`` ts is skipped.
+        const tsList = cached
+          .map((r) => r.cachedAt)
+          .filter((v): v is number => typeof v === 'number');
+        setOldestCachedAt(tsList.length > 0 ? Math.min(...tsList) : null);
+      }
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load instructor data');
     }
@@ -92,6 +112,26 @@ export function InstructorDashboard() {
       </header>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
+
+      {anyFromCache && (
+        <div
+          role="status"
+          className="rounded-md border border-amber-400/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:bg-amber-900/15 dark:text-amber-200"
+        >
+          {oldestCachedAt ? (
+            <>
+              Viewing cached cohort data from at least{' '}
+              {formatCacheAge(oldestCachedAt)} ago. The fresh figures load
+              when you're back online — hit Refresh to retry.
+            </>
+          ) : (
+            <>
+              Viewing cached cohort data. The fresh figures load when you're
+              back online — hit Refresh to retry.
+            </>
+          )}
+        </div>
+      )}
 
       {overview && (
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
