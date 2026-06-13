@@ -1,0 +1,28 @@
+# Capacitor sync output (generated from the web bundle on every ``cap sync``)
+www/*
+!www/.gitkeep
+
+# Native build artifacts — committed source dirs (ios/, android/) keep their
+# project files, but everything below is regenerable.
+ios/App/Pods/
+ios/App/build/
+ios/App/DerivedData/
+ios/App/App.xcworkspace/xcuserdata/
+ios/App/App.xcodeproj/xcuserdata/
+ios/App/Podfile.lock
+
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.idea/
+android/captures/
+android/*.iml
+
+# Signing artifacts (never commit these — leaked keys mean publishing under
+# someone else's identity)
+*.keystore
+*.jks
+*.mobileprovision
+*.p12
+*.cer

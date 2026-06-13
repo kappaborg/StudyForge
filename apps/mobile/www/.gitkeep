@@ -1,0 +1,4 @@
+Capacitor expects this directory to exist even in remote-shell mode
+(server.url in capacitor.config.ts). It's the fallback web root used
+when ``cap sync`` runs without a network. Real web bundle goes here
+only if we flip to bundled-shell mode — see ../MOBILE.md.
