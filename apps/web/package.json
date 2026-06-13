@@ -6,7 +6,7 @@
     "dev": "next dev --turbo --port 3000",
     "build": "next build",
     "start": "next start --port 3000",
-    "lint": "echo 'web lint disabled until eslint.config.mjs lands in Phase B' && exit 0",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "i18n:check": "node scripts/check-i18n-parity.mjs",
     "e2e": "playwright test",

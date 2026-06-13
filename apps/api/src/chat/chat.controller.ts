@@ -137,7 +137,7 @@ export class ChatController {
   ): Promise<TutorAskResponseDto> {
     await enforceBudget(this.budget, user.tenantId);
 
-    let sessionId = dto.sessionId ?? null;
+    const sessionId = dto.sessionId ?? null;
     if (sessionId) {
       await this.chat.requireOwnedSession(user.tenantId, user.userId, sessionId);
       await this.chat.appendUserMessage(sessionId, dto.query);
@@ -208,7 +208,7 @@ export class ChatController {
   ): Promise<void> {
     await enforceBudget(this.budget, user.tenantId);
 
-    let sessionId = dto.sessionId ?? null;
+    const sessionId = dto.sessionId ?? null;
     if (sessionId) {
       await this.chat.requireOwnedSession(user.tenantId, user.userId, sessionId);
       await this.chat.appendUserMessage(sessionId, dto.query);
@@ -331,7 +331,7 @@ export class ChatController {
           .catch((err) => {
             // Persistence failure shouldn't break the user-visible stream,
             // which has already flushed. Log and move on.
-            // eslint-disable-next-line no-console
+             
             console.error('chat.persist_assistant_failed', err);
           });
       }

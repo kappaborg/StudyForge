@@ -43,7 +43,6 @@ async function bootstrap() {
     }
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   await adapter.getInstance().register(fastifyCookie as any, {
     secret: process.env['SESSION_COOKIE_SECRET'] ?? 'studyforge-dev-secret-do-not-use-in-prod',
   });
@@ -77,7 +76,6 @@ async function bootstrap() {
 }
 
 bootstrap().catch((err) => {
-  // eslint-disable-next-line no-console
   console.error('Failed to start API gateway:', err);
   process.exit(1);
 });

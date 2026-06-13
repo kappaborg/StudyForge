@@ -38,7 +38,6 @@ export function setupObservability(): void {
       return event;
     },
   });
-  // eslint-disable-next-line no-console
   console.log('[observability] Sentry enabled (errors-only)');
 }
 

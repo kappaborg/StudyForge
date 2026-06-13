@@ -29,10 +29,6 @@ interface DiffPayload {
   roadmaps: DiffSection<RoadmapDiffItem>;
 }
 
-function pluralize(n: number, single: string): string {
-  return `${n} ${single}${n === 1 ? '' : 's'}`;
-}
-
 function SectionHeader({
   title,
   diff,
@@ -143,7 +139,6 @@ export function DiffPanel({ courseId }: { courseId: string }) {
       </article>
     </section>
   );
-  void pluralize;
 }
 
 function DiffList({ added, removed }: { added: string[]; removed: string[] }) {

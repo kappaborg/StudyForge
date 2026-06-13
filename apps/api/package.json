@@ -7,7 +7,7 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "postinstall": "prisma generate --schema=prisma/schema.prisma",
-    "lint": "echo 'api lint disabled until eslint.config.mjs lands in Phase B' && exit 0",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "jest --passWithNoTests",
     "clean": "rm -rf dist .turbo"

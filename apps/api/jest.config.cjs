@@ -1,4 +1,3 @@
-/* eslint-disable */
 /**
  * Minimal Jest config for the API service. Picks up any ``*.spec.ts``
  * file under ``src/`` with the standard ts-jest transform. Mirrors the

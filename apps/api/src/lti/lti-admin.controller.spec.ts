@@ -79,13 +79,13 @@ function makeFakePrisma(state: FakePrismaState): PrismaService {
           orderBy: object;
           take?: number;
         }) => {
+          // ``where`` shape is asserted only to surface type drift; the
+          // fake actually filters in code above.
+          void where;
           const filtered = state.institutions
             .filter((i) => i.ltiIssuer !== null && i.deletedAt === null)
             .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
           return take ? filtered.slice(0, take) : filtered;
-          // ``where`` shape is asserted only to surface type drift; the
-          // fake actually filters in code above.
-          void where;
         },
       ),
     },
