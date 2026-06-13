@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   API_BASE,
@@ -9,6 +10,7 @@ import {
   apiGet,
   apiPost,
 } from '../lib/dev-fetch';
+import { useOfflineTutorReady } from '../lib/use-offline-tutor-ready';
 import { CitationLink } from './citation-link';
 import { VoiceInputButton } from './voice-input-button';
 import { VoiceOutputButton } from './voice-output-button';
@@ -124,6 +126,13 @@ export function TutorChat({ folderId, courseId }: Props) {
   // before stitching the request body.
   const safeFolderId = isUuid(folderId) ? folderId : undefined;
   const safeCourseId = isUuid(courseId) ? courseId : undefined;
+
+  // WebLLM / offline tutor discoverability (Phase D-1). When the folder
+  // has a built local index AND the browser supports WebGPU, the user
+  // has a working offline path. We surface it as a passive link by
+  // default and *promote* it to an amber banner when the browser is
+  // actually offline (the streaming endpoint will fail otherwise).
+  const offline = useOfflineTutorReady(safeFolderId);
 
   const ensureSession = useCallback(async (): Promise<string> => {
     if (activeId) return activeId;
@@ -344,11 +353,37 @@ export function TutorChat({ folderId, courseId }: Props) {
             className="block w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-foreground/30"
             aria-label="Question for the tutor"
           />
+          {offline.available && offline.isOffline && safeFolderId && (
+            <div
+              role="status"
+              className="mt-2 rounded-md border border-amber-400/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:bg-amber-900/15 dark:text-amber-200"
+            >
+              You're offline — the streaming tutor needs a connection.{' '}
+              <Link
+                href={`/local-tutor/${safeFolderId}`}
+                className="font-medium underline decoration-amber-500/60 underline-offset-2 hover:text-amber-950 dark:hover:text-amber-100"
+              >
+                Open the offline tutor
+              </Link>{' '}
+              to keep studying.
+            </div>
+          )}
           <div className="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
             <span className="min-w-0 truncate">
               {folderId
                 ? 'Scoped to current folder.'
                 : 'Searching all your materials.'}
+              {offline.available && safeFolderId && !offline.isOffline && (
+                <>
+                  {' · '}
+                  <Link
+                    href={`/local-tutor/${safeFolderId}`}
+                    className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground hover:decoration-foreground/60"
+                  >
+                    Try the offline tutor
+                  </Link>
+                </>
+              )}
             </span>
             <div className="flex items-center gap-2">
               <VoiceInputButton
