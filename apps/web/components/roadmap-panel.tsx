@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { track } from '../lib/analytics';
-import { apiGetCached, apiPost, ApiError } from '../lib/dev-fetch';
+import { apiGetCachedWithMeta, apiPost, ApiError } from '../lib/dev-fetch';
+import { formatCacheAge } from '../lib/format-cache-age';
 import { relativeTime } from '../lib/format-document';
 
 interface Milestone {
@@ -37,12 +38,23 @@ export function RoadmapPanel({ courseId }: { courseId: string }) {
   const [query, setQuery] = useState('');
   const [weeks, setWeeks] = useState(4);
 
+  // Offline-state for the read-only roadmap views. ``listFromCache``
+  // tracks the index (LHS rail); ``detailCachedAt`` tracks the opened
+  // roadmap (RHS body). Showing both lets the student tell at a glance
+  // whether their LIST is stale, their DETAIL is stale, or both.
+  const [listFromCache, setListFromCache] = useState(false);
+  const [listCachedAt, setListCachedAt] = useState<number | null>(null);
+  const [detailFromCache, setDetailFromCache] = useState(false);
+  const [detailCachedAt, setDetailCachedAt] = useState<number | null>(null);
+
   const refresh = async () => {
     try {
-      const res = await apiGetCached<{ roadmaps: RoadmapSummary[] }>(
+      const res = await apiGetCachedWithMeta<{ roadmaps: RoadmapSummary[] }>(
         `/v1/courses/${courseId}/roadmaps`,
       );
-      setRoadmaps(res.roadmaps);
+      setRoadmaps(res.value.roadmaps);
+      setListFromCache(res.fromCache);
+      setListCachedAt(res.cachedAt);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load roadmaps');
     }
@@ -76,8 +88,10 @@ export function RoadmapPanel({ courseId }: { courseId: string }) {
     setBusy(true);
     setError(null);
     try {
-      const res = await apiGetCached<Roadmap>(`/v1/roadmaps/${id}`);
-      setRoadmap(res);
+      const res = await apiGetCachedWithMeta<Roadmap>(`/v1/roadmaps/${id}`);
+      setRoadmap(res.value);
+      setDetailFromCache(res.fromCache);
+      setDetailCachedAt(res.cachedAt);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to open roadmap');
     } finally {
@@ -94,8 +108,36 @@ export function RoadmapPanel({ courseId }: { courseId: string }) {
     }
   }
 
+  // Single banner that prefers whichever surface is more meaningful to
+  // the student right now: a stale detail view trumps a stale list,
+  // since detail is what they're actively reading.
+  const offlineSurface = detailFromCache
+    ? { label: 'this roadmap', cachedAt: detailCachedAt }
+    : listFromCache
+      ? { label: 'the roadmap list', cachedAt: listCachedAt }
+      : null;
+
   return (
     <div className="space-y-6">
+      {offlineSurface && (
+        <div
+          role="status"
+          className="rounded-md border border-amber-400/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:bg-amber-900/15 dark:text-amber-200"
+        >
+          {offlineSurface.cachedAt ? (
+            <>
+              You're viewing {offlineSurface.label} from a cached snapshot{' '}
+              {formatCacheAge(offlineSurface.cachedAt)} ago. The fresh
+              version will load when you're back online.
+            </>
+          ) : (
+            <>
+              You're viewing {offlineSurface.label} from a cached snapshot.
+              The fresh version will load when you're back online.
+            </>
+          )}
+        </div>
+      )}
       <section className="rounded-lg border border-border p-4 space-y-3">
         <h3 className="text-sm font-semibold">Generate a new roadmap</h3>
         <div className="flex flex-col gap-2 md:flex-row md:items-end">

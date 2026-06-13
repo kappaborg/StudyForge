@@ -97,6 +97,60 @@ export async function apiGetCached<T>(path: string): Promise<T> {
   }
 }
 
+export interface CachedGetResult<T> {
+  value: T;
+  /** ``true`` when the network call failed and the value came from the
+   *  localStorage cache instead. */
+  fromCache: boolean;
+  /** Epoch ms of the cache write that served this read. ``null`` when
+   *  the fresh path returned (caller doesn't need a cache age then). */
+  cachedAt: number | null;
+}
+
+/**
+ * Variant of ``apiGetCached`` that returns metadata about the cache
+ * state alongside the value. Lets the UI render a "you're viewing
+ * cached content from N min ago" banner without forcing every existing
+ * caller to refactor.
+ *
+ * Network reachable → ``{ value: fresh, fromCache: false, cachedAt: null }``
+ * Network unreachable → returns the cached value with ``fromCache: true``
+ *   and the ``cachedAt`` timestamp from the original cache write.
+ * No cache + no network → rebubbles the underlying error so the UI can
+ *   show its own empty / offline state.
+ */
+export async function apiGetCachedWithMeta<T>(path: string): Promise<CachedGetResult<T>> {
+  const key = `sf-cache:${path}`;
+  try {
+    const fresh = await apiGet<T>(path);
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.setItem(
+          key,
+          JSON.stringify({ value: fresh, ts: Date.now() }),
+        );
+      } catch {
+        // Quota exceeded etc. — non-fatal.
+      }
+    }
+    return { value: fresh, fromCache: false, cachedAt: null };
+  } catch (err) {
+    if (typeof window === 'undefined') throw err;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) throw err;
+    try {
+      const parsed = JSON.parse(raw) as { value: T; ts?: number };
+      return {
+        value: parsed.value,
+        fromCache: true,
+        cachedAt: typeof parsed.ts === 'number' ? parsed.ts : null,
+      };
+    } catch {
+      throw err;
+    }
+  }
+}
+
 export async function apiPost<T>(
   path: string,
   body: object,
