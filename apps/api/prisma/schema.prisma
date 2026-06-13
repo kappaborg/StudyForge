@@ -101,6 +101,11 @@ model Institution {
   ltiIssuer       String?    @unique
   ltiClientId     String?
   ltiDeploymentId String?
+  // OIDC ``jwks_uri`` for the platform. When set the LTI controller
+  // verifies the launch id_token's signature against the keyset; when
+  // null the launch falls back to the dev-mode unverified path
+  // (allowed only with ``LTI_ALLOW_UNVERIFIED=true`` env).
+  ltiJwksUri      String?
   samlMetadata    String?
   region          DataRegion @default(us)
   createdAt       DateTime   @default(now())

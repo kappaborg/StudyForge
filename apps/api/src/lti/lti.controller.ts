@@ -71,12 +71,14 @@ export class LtiController {
         title: 'LTI id_token is required',
       });
     }
-    // The validator (``launch.ts``) needs an LtiTrustConfig + JwksFetcher.
-    // In dev mode we accept the unvalidated payload to keep the flow
-    // demonstrable; production must call ``validateLaunch`` from
-    // ``./launch`` with a real JWKS fetcher.
+    // Verification is delegated to ``LtiService.verifyOrDecode`` which
+    // picks the right trust config for the launch's issuer and runs
+    // the full ``verifyLtiLaunch`` against a cached JWKS. Unverified
+    // launches only succeed when ``LTI_ALLOW_UNVERIFIED=true`` (or in
+    // non-prod), and even then the service logs a loud warning so the
+    // dev-mode path is obvious in audit trails.
     try {
-      const claims = await decodeUnverified(dto.id_token);
+      const claims = await this.lti.verifyOrDecode(dto.id_token);
       const { tenantId, userId } = await this.lti.provisionFromLaunch(claims);
       const webBase = process.env['WEB_BASE_URL'] ?? 'http://localhost:3000';
       res.redirect(
@@ -95,32 +97,3 @@ export class LtiController {
   }
 }
 
-/**
- * Dev-mode JWS decoder. Skips signature verification — production calls
- * the full ``validateLaunch`` from ``./launch`` with a JWKS fetcher
- * scoped to the platform.
- */
-async function decodeUnverified(token: string): Promise<import('./launch').LtiClaims> {
-  const parts = token.split('.');
-  if (parts.length !== 3) throw new Error('malformed token');
-  const payload = JSON.parse(Buffer.from(parts[1]!, 'base64url').toString('utf-8'));
-  return {
-    iss: payload.iss,
-    aud: typeof payload.aud === 'string' ? payload.aud : payload.aud?.[0] ?? '',
-    sub: payload.sub,
-    nonce: payload.nonce,
-    iat: payload.iat,
-    exp: payload.exp,
-    azp: payload.azp ?? '',
-    deploymentId:
-      payload['https://purl.imsglobal.org/spec/lti/claim/deployment_id'] ?? '',
-    messageType:
-      payload['https://purl.imsglobal.org/spec/lti/claim/message_type'] ?? '',
-    contextId:
-      payload['https://purl.imsglobal.org/spec/lti/claim/context']?.id,
-    resourceLinkId:
-      payload['https://purl.imsglobal.org/spec/lti/claim/resource_link']?.id,
-    roles: payload['https://purl.imsglobal.org/spec/lti/claim/roles'] ?? [],
-    raw: payload,
-  };
-}
