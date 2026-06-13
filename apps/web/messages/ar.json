@@ -32,5 +32,9 @@
     "diagrams": "المخططات",
     "slides": "الشرائح",
     "analytics": "التحليلات"
+  },
+  "footer": {
+    "tagline": "مجاني لكل طالب",
+    "about": "حول"
   }
 }

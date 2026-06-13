@@ -30,5 +30,9 @@
     "diagrams": "Diagrams",
     "slides": "Slides",
     "analytics": "Analytics"
+  },
+  "footer": {
+    "tagline": "Free for every student",
+    "about": "About"
   }
 }

@@ -32,5 +32,9 @@
     "diagrams": "Diagramme",
     "slides": "Folien",
     "analytics": "Analytik"
+  },
+  "footer": {
+    "tagline": "Kostenlos für jeden Studenten",
+    "about": "Über uns"
   }
 }

@@ -32,5 +32,9 @@
     "diagrams": "图表",
     "slides": "幻灯片",
     "analytics": "分析"
+  },
+  "footer": {
+    "tagline": "对每位学生免费",
+    "about": "关于"
   }
 }

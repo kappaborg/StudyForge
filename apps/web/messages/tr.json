@@ -32,5 +32,9 @@
     "diagrams": "Şemalar",
     "slides": "Slaytlar",
     "analytics": "Analitik"
+  },
+  "footer": {
+    "tagline": "Her öğrenci için ücretsiz",
+    "about": "Hakkında"
   }
 }
