@@ -81,6 +81,9 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      - name: i18n locale parity
+        run: pnpm --filter web i18n:check
+
       - name: Build
         run: pnpm build
 

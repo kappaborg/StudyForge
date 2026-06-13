@@ -8,6 +8,7 @@
     "start": "next start --port 3000",
     "lint": "echo 'web lint disabled until eslint.config.mjs lands in Phase B' && exit 0",
     "typecheck": "tsc --noEmit",
+    "i18n:check": "node scripts/check-i18n-parity.mjs",
     "e2e": "playwright test",
     "e2e:install": "playwright install --with-deps chromium",
     "clean": "rm -rf .next .turbo"

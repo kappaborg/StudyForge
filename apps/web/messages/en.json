@@ -1,6 +1,8 @@
 {
   "nav": {
     "dashboard": "Dashboard",
+    "review": "Review",
+    "mastery": "Mastery",
     "instructor": "Instructor",
     "settings": "Settings",
     "search": "Search"
