@@ -177,6 +177,11 @@ jobs:
     defaults:
       run:
         working-directory: apps/ai-worker
+    env:
+      # Hoisted to job-level so the LLM-judge step's ``if:`` condition
+      # below can read it. Empty string on PRs without the secret (forks,
+      # dependabot, before the secret was added) — the step skips cleanly.
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -196,7 +201,7 @@ jobs:
         #   - citation_validity   0.95 — no hallucinated chunk_ids
         #   - refusal_consistency 1.00 — refusal flag matches expectation
         # context_precision is reported but not gated (lexical-proxy
-        # noise; real Ragas judge lands when EVAL_MODE=ragas ships).
+        # noise; real Ragas judge runs below when GEMINI_API_KEY is set).
         run: |
           uv run python -m src.eval.cli \
             --prompt tutor.answer.v1 \
@@ -204,6 +209,24 @@ jobs:
             --min-pass-rate 1.0 \
             --min-citation-validity 0.95 \
             --min-refusal-consistency 1.0
+
+      - name: Tutor eval gate (LLM-judge / Ragas)
+        # Real semantic judge — one Gemini Flash call per golden case
+        # scoring faithfulness / answer_relevance / context_recall.
+        # Skipped on PRs without the secret (forks, dependabot); runs
+        # on main + PRs from collaborators. Floors deliberately permissive
+        # at first (0.70 each) so judge variance doesn't dominate the
+        # signal — tighten in a follow-up once we have N runs of baseline.
+        if: env.GEMINI_API_KEY != ''
+        run: |
+          uv run python -m src.eval.cli \
+            --prompt tutor.answer.v1 \
+            --golden golden/tutor_answer_v1.jsonl \
+            --mode ragas \
+            --min-pass-rate 1.0 \
+            --min-faithfulness 0.70 \
+            --min-answer-relevance 0.70 \
+            --min-context-recall 0.70
 
   security:
     name: Security · Trivy + secret scan

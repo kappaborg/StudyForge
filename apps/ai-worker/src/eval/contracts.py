@@ -7,7 +7,7 @@ authoring discipline tight.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -73,6 +73,14 @@ class Threshold:
     min_scores: dict[str, float] = field(default_factory=dict)
     """Per-metric average floor. Example: ``{"citation_validity": 0.95,
     "context_precision": 0.80}``. Empty dict skips score gating."""
+
+
+class Evaluator(Protocol):
+    """Anything that turns one ``GoldenCase`` into one ``EvalResult``.
+    Implemented by ``StructuralEvaluator`` (deterministic) and
+    ``RagasEvaluator`` (structural + LLM-judge)."""
+
+    async def evaluate(self, case: GoldenCase) -> EvalResult: ...
 
 
 @dataclass(frozen=True)

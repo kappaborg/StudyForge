@@ -197,3 +197,148 @@ async def test_shipped_golden_set_passes_at_full_threshold() -> None:
     )
     assert report.meets_threshold, json.dumps(report.to_jsonable(), indent=2)
     assert report.passed == report.total
+
+
+# ── LLM-judge / Ragas mode ──────────────────────────────────────────────────
+
+from collections.abc import AsyncIterator
+
+from src.agents.contracts import TutorOutput
+from src.eval.llm_judge import LlmJudge, _clamp, _extract_json_object
+from src.eval.ragas import RagasEvaluator
+from src.llm.contracts import (
+    LLMProvider,
+    LLMRequest,
+    LLMResponse,
+    LLMStreamChunk,
+    LLMUsage,
+)
+
+
+class _FakeJudgeProvider(LLMProvider):
+    """Returns a fixed text payload so judge logic can be tested without
+    a real LLM call."""
+
+    id: str = "fake-judge"
+    supports_prompt_cache: bool = False
+    supports_streaming: bool = False
+    context_window_tokens: int = 8000
+
+    def __init__(self, text: str) -> None:
+        self._text = text
+        self.calls: list[LLMRequest] = []
+
+    async def complete(self, req: LLMRequest) -> LLMResponse:
+        self.calls.append(req)
+        return LLMResponse(
+            text=self._text,
+            finish_reason="stop",
+            usage=LLMUsage(tokens_in=0, tokens_out=0, cached_tokens_in=0, cache_hit=False),
+            model=req.model,
+            provider_id="fake-judge",
+        )
+
+    def stream(self, req: LLMRequest) -> AsyncIterator[LLMStreamChunk]:  # pragma: no cover
+        raise NotImplementedError
+
+    async def ping(self) -> dict[str, object]:  # pragma: no cover
+        return {"ok": True}
+
+
+def test_clamp_handles_out_of_range_and_garbage() -> None:
+    assert _clamp(0.5) == 0.5
+    assert _clamp(1.5) == 1.0
+    assert _clamp(-0.5) == 0.0
+    assert _clamp("not a number") == 0.0
+    assert _clamp(None) == 0.0
+
+
+def test_extract_json_object_bare() -> None:
+    assert _extract_json_object('{"a": 1}') == {"a": 1}
+
+
+def test_extract_json_object_with_fence() -> None:
+    text = 'Sure, here:\n```json\n{"a": 1, "b": 2}\n```\n'
+    assert _extract_json_object(text) == {"a": 1, "b": 2}
+
+
+def test_extract_json_object_with_preamble() -> None:
+    text = 'I think: {"a": 1}'
+    assert _extract_json_object(text) == {"a": 1}
+
+
+def test_extract_json_object_raises_on_no_json() -> None:
+    with pytest.raises(ValueError):
+        _extract_json_object("the answer is excellent")
+
+
+@pytest.mark.asyncio
+async def test_llm_judge_parses_well_formed_response() -> None:
+    provider = _FakeJudgeProvider(
+        '{"faithfulness": 0.9, "answer_relevance": 0.85, "context_recall": 0.7, '
+        '"reasoning": "answer covers the question well"}'
+    )
+    judge = LlmJudge(provider=provider, model="judge-test")
+    case = GoldenCase(
+        case_id="c1",
+        query="What does photosynthesis produce?",
+        chunks=(GoldenChunk(chunk_id="ch1", content="Photosynthesis produces glucose."),),
+        expected_chunks=("ch1",),
+    )
+    out = TutorOutput(
+        session_id="00000000-0000-0000-0000-000000000000",
+        text="It produces glucose.",
+        citations=[],
+        refusal=False,
+    )
+    scores = await judge.score(case, out)
+    assert scores.faithfulness == 0.9
+    assert scores.answer_relevance == 0.85
+    assert scores.context_recall == 0.7
+    assert "covers" in scores.reasoning
+
+
+@pytest.mark.asyncio
+async def test_llm_judge_returns_zeros_on_garbage_response() -> None:
+    provider = _FakeJudgeProvider("the answer is honestly pretty good imo")
+    judge = LlmJudge(provider=provider, model="judge-test")
+    case = GoldenCase(case_id="c1", query="Q?", chunks=(), expect_refusal=True)
+    out = TutorOutput(
+        session_id="00000000-0000-0000-0000-000000000000",
+        text="",
+        citations=[],
+        refusal=True,
+    )
+    scores = await judge.score(case, out)
+    assert scores.faithfulness == 0.0
+    assert scores.answer_relevance == 0.0
+    assert scores.context_recall == 0.0
+    assert "did not parse" in scores.reasoning
+
+
+@pytest.mark.asyncio
+async def test_ragas_evaluator_merges_structural_and_judge_scores() -> None:
+    provider = _FakeJudgeProvider(
+        '{"faithfulness": 1.0, "answer_relevance": 1.0, "context_recall": 1.0, "reasoning": "ok"}'
+    )
+    judge = LlmJudge(provider=provider, model="judge-test")
+    case = GoldenCase(
+        case_id="c1",
+        query="What does photosynthesis produce?",
+        chunks=(GoldenChunk(chunk_id="ch1", content="Photosynthesis produces glucose and oxygen."),),
+        expected_chunks=("ch1",),
+    )
+    evaluator = RagasEvaluator(judge=judge)
+    result = await evaluator.evaluate(case)
+    # Structural lite scores still present.
+    assert "citation_validity" in result.scores
+    assert "context_precision" in result.scores
+    # Judge scores layered on top.
+    assert result.scores["faithfulness"] == 1.0
+    assert result.scores["answer_relevance"] == 1.0
+    assert result.scores["context_recall"] == 1.0
+    # Structural pass/fail is preserved.
+    assert result.passed is True
+    # The judge was actually called.
+    assert len(provider.calls) == 1
+    assert provider.calls[0].temperature == 0.0

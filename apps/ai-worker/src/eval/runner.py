@@ -11,7 +11,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 
-from .contracts import EvalReport, GoldenCase, Threshold
+from .contracts import EvalReport, Evaluator, GoldenCase, Threshold
 from .loader import load_golden_set
 from .structural import StructuralEvaluator
 
@@ -19,8 +19,8 @@ log = logging.getLogger(__name__)
 
 
 class EvalRunner:
-    def __init__(self, *, evaluator: StructuralEvaluator | None = None) -> None:
-        self._evaluator = evaluator or StructuralEvaluator()
+    def __init__(self, *, evaluator: Evaluator | None = None) -> None:
+        self._evaluator: Evaluator = evaluator or StructuralEvaluator()
 
     async def run_path(
         self,

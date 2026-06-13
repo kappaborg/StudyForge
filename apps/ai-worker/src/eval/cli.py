@@ -21,13 +21,16 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
-from .contracts import Threshold
+from .contracts import Evaluator, Threshold
 from .runner import EvalRunner
 
 DEFAULT_GOLDEN_ROOT = Path("packages/eval-harness/golden")
+
+RAGAS_METRICS = ("faithfulness", "answer_relevance", "context_recall")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -70,6 +73,34 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Emit the report as JSON instead of human-readable text.",
     )
+    parser.add_argument(
+        "--mode",
+        choices=("structural", "ragas"),
+        default=os.environ.get("EVAL_MODE", "structural"),
+        help=(
+            "structural (default): deterministic §5 contract check + ragas-lite "
+            "lexical scores, no LLM. ragas: same + one LLM-judge call per case "
+            "scoring faithfulness / answer_relevance / context_recall. Ragas mode "
+            "requires at least one provider key in the env."
+        ),
+    )
+    parser.add_argument(
+        "--judge-model",
+        default=None,
+        help="Judge model id (default: EVAL_JUDGE_MODEL env or gemini-2.0-flash-exp).",
+    )
+    parser.add_argument(
+        "--judge-provider",
+        default=None,
+        help="Explicit provider id for the judge (default: first available).",
+    )
+    for metric in RAGAS_METRICS:
+        parser.add_argument(
+            f"--min-{metric.replace('_', '-')}",
+            type=float,
+            default=0.0,
+            help=f"Average {metric} floor (0..1) — only enforced in ragas mode.",
+        )
     return parser
 
 
@@ -143,14 +174,28 @@ def main(argv: list[str] | None = None) -> int:
         min_scores["context_precision"] = args.min_context_precision
     if args.min_refusal_consistency > 0:
         min_scores["refusal_consistency"] = args.min_refusal_consistency
+
+    # Ragas-only thresholds. Stay zero (i.e. unenforced) in structural mode.
+    if args.mode == "ragas":
+        for metric in RAGAS_METRICS:
+            floor = getattr(args, f"min_{metric}")
+            if floor > 0:
+                min_scores[metric] = floor
+
     threshold = Threshold(
         prompt_id=args.prompt,
         min_pass_rate=args.min_pass_rate,
         min_scores=min_scores,
     )
 
+    try:
+        evaluator = _build_evaluator(args)
+    except RuntimeError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     async def _main() -> int:
-        report = await EvalRunner().run_path(
+        report = await EvalRunner(evaluator=evaluator).run_path(
             prompt_id=args.prompt,
             golden_path=golden_path,
             threshold=threshold,
@@ -162,6 +207,62 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if report.meets_threshold else 1
 
     return asyncio.run(_main())
+
+
+def _build_evaluator(args: argparse.Namespace) -> Evaluator | None:
+    """Return the evaluator chosen by ``args.mode``. Raises RuntimeError
+    on misconfigured ragas runs (the failure surface for "EVAL_MODE=ragas
+    is set but no provider key is in the env")."""
+    if args.mode == "structural":
+        return None  # EvalRunner default
+
+    # Local imports keep the structural path free of LLM-router weight.
+    from ..llm.registry import ProviderCredentials, ProviderRegistry
+    from .llm_judge import LlmJudge, judge_model_from_env
+    from .ragas import RagasEvaluator
+
+    creds = ProviderCredentials(
+        groq_api_key=os.environ.get("GROQ_API_KEY"),
+        gemini_api_key=os.environ.get("GEMINI_API_KEY"),
+        openai_api_key=os.environ.get("OPENAI_API_KEY"),
+        anthropic_api_key=os.environ.get("ANTHROPIC_API_KEY"),
+        openrouter_api_key=os.environ.get("OPENROUTER_API_KEY"),
+        cerebras_api_key=os.environ.get("CEREBRAS_API_KEY"),
+        together_api_key=os.environ.get("TOGETHER_API_KEY"),
+        fireworks_api_key=os.environ.get("FIREWORKS_API_KEY"),
+    )
+    registry = ProviderRegistry(creds)
+    available = registry.available_provider_ids()
+    if not available:
+        raise RuntimeError(
+            "ragas mode requires a provider key in the env (one of "
+            "GROQ_API_KEY / GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY / "
+            "OPENROUTER_API_KEY / CEREBRAS_API_KEY / TOGETHER_API_KEY / "
+            "FIREWORKS_API_KEY), but none are set"
+        )
+
+    provider_id = args.judge_provider or _pick_judge_provider(available)
+    if provider_id not in available:
+        raise RuntimeError(
+            f"--judge-provider {provider_id!r} requested, but only "
+            f"{sorted(available)} are configured"
+        )
+
+    judge = LlmJudge(
+        provider=registry.get(provider_id),
+        model=args.judge_model or judge_model_from_env(),
+    )
+    return RagasEvaluator(judge=judge)
+
+
+def _pick_judge_provider(available: list[str]) -> str:
+    """Pick a judge from what's available. Gemini Flash → Groq → first
+    configured. Gemini first because it's the largest free tier; Groq
+    next because it's the fastest."""
+    for preferred in ("gemini", "groq", "openrouter", "openai", "anthropic"):
+        if preferred in available:
+            return preferred
+    return next(iter(sorted(available)))
 
 
 if __name__ == "__main__":
