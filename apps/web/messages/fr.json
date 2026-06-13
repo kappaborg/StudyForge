@@ -35,7 +35,9 @@
   },
   "footer": {
     "tagline": "Gratuit pour tous les étudiants",
-    "about": "À propos"
+    "about": "À propos",
+    "privacy": "Confidentialité",
+    "terms": "Conditions"
   },
   "settings": {
     "byokTitle": "Clés et IA locale",

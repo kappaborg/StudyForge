@@ -35,7 +35,9 @@
   },
   "footer": {
     "tagline": "مجاني لكل طالب",
-    "about": "حول"
+    "about": "حول",
+    "privacy": "الخصوصية",
+    "terms": "الشروط"
   },
   "settings": {
     "byokTitle": "المفاتيح والذكاء المحلي",

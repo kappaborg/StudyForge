@@ -23,6 +23,12 @@ export async function Footer() {
           <Link href="/about" className="hover:text-foreground">
             {t('about')}
           </Link>
+          <Link href="/privacy" className="hover:text-foreground">
+            {t('privacy')}
+          </Link>
+          <Link href="/terms" className="hover:text-foreground">
+            {t('terms')}
+          </Link>
           <a
             href="https://github.com/kappaborg"
             target="_blank"

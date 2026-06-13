@@ -35,7 +35,9 @@
   },
   "footer": {
     "tagline": "Kostenlos für jeden Studenten",
-    "about": "Über uns"
+    "about": "Über uns",
+    "privacy": "Datenschutz",
+    "terms": "AGB"
   },
   "settings": {
     "byokTitle": "Schlüssel & lokale KI",

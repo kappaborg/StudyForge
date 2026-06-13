@@ -35,7 +35,9 @@
   },
   "footer": {
     "tagline": "Her öğrenci için ücretsiz",
-    "about": "Hakkında"
+    "about": "Hakkında",
+    "privacy": "Gizlilik",
+    "terms": "Koşullar"
   },
   "settings": {
     "byokTitle": "Anahtarlar ve Yerel YZ",

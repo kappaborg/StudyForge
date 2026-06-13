@@ -35,7 +35,9 @@
   },
   "footer": {
     "tagline": "Gratis para todos los estudiantes",
-    "about": "Acerca de"
+    "about": "Acerca de",
+    "privacy": "Privacidad",
+    "terms": "Términos"
   },
   "settings": {
     "byokTitle": "Claves e IA local",

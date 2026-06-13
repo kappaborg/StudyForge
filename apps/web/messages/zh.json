@@ -35,7 +35,9 @@
   },
   "footer": {
     "tagline": "对每位学生免费",
-    "about": "关于"
+    "about": "关于",
+    "privacy": "隐私",
+    "terms": "条款"
   },
   "settings": {
     "byokTitle": "密钥与本地 AI",

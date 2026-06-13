@@ -35,7 +35,9 @@
   },
   "footer": {
     "tagline": "Free for every student",
-    "about": "About"
+    "about": "About",
+    "privacy": "Privacy",
+    "terms": "Terms"
   },
   "settings": {
     "byokTitle": "Keys & Local AI",
