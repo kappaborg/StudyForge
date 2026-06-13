@@ -15,6 +15,8 @@ import AxeBuilder from '@axe-core/playwright';
 const ROUTES = [
   { path: '/', name: 'marketing landing' },
   { path: '/dashboard', name: 'dashboard' },
+  { path: '/review', name: 'SRS review session' },
+  { path: '/mastery', name: 'mastery overview' },
   { path: '/courses/demo', name: 'course workspace · materials' },
   { path: '/courses/demo/flashcards', name: 'workspace · flashcards' },
   { path: '/courses/demo/quizzes', name: 'workspace · quizzes' },
@@ -40,13 +42,62 @@ for (const route of ROUTES) {
   });
 }
 
-function formatViolations(violations: { id: string; help: string; nodes: { target: unknown[] }[] }[]): string {
+/**
+ * RTL parity. Phase 4 (i18n) introduced ``<html dir="rtl">`` for the
+ * ``ar`` locale; verify the bidirectional flip didn't regress a11y on
+ * the most-visited surfaces. We don't scan every route in RTL — the
+ * structural rules (labels, ARIA, name-role-value) don't care about
+ * direction, so a representative sample (landing + dashboard) catches
+ * the cases that DO break in RTL (icon-flip targets, mirrored carousel
+ * focus order).
+ */
+const RTL_ROUTES = [
+  { path: '/', name: 'RTL · marketing landing' },
+  { path: '/dashboard', name: 'RTL · dashboard' },
+];
+
+for (const route of RTL_ROUTES) {
+  test(`a11y · ${route.name}`, async ({ page, context }) => {
+    // Set the locale cookie BEFORE the first navigation so SSR picks
+    // ``ar`` up on the initial render — otherwise the first paint is
+    // LTR and the axe scan never sees the RTL surface.
+    await context.addCookies([
+      {
+        name: 'NEXT_LOCALE',
+        value: 'ar',
+        url: page.context().pages()[0]?.url() ?? 'http://localhost:3000',
+        sameSite: 'Lax',
+      },
+    ]);
+    await page.goto(route.path);
+    await page.waitForLoadState('networkidle');
+
+    // Sanity check the flip actually engaged. If a future regression
+    // breaks the cookie wire-up, this assertion catches it before axe
+    // runs and silently passes against an LTR render.
+    const dir = await page.evaluate(() => document.documentElement.dir);
+    expect(dir).toBe('rtl');
+
+    const results = await new AxeBuilder({ page })
+      .disableRules(['color-contrast'])
+      .analyze();
+    expect(results.violations, formatViolations(results.violations)).toEqual([]);
+  });
+}
+
+function formatViolations(
+  violations: { id: string; help: string; nodes: { target: unknown[] }[] }[],
+): string {
   if (violations.length === 0) return '';
+  // Show up to 8 offending nodes per violation — the prior limit of 3
+  // hid distinct failure modes when one rule fired across the page
+  // (e.g. unlabeled buttons in a list). 8 keeps the output scannable
+  // without truncating real signal.
   return violations
     .map(
       (v) =>
         `[${v.id}] ${v.help} — ${v.nodes.length} node(s): ${v.nodes
-          .slice(0, 3)
+          .slice(0, 8)
           .map((n) => JSON.stringify(n.target))
           .join(', ')}`,
     )
