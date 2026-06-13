@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { apiGet, ApiError } from '../lib/dev-fetch';
 
 interface BudgetSnapshot {
@@ -16,6 +17,7 @@ interface BudgetSnapshot {
 export function BudgetPill() {
   const [snap, setSnap] = useState<BudgetSnapshot | null>(null);
   const [error, setError] = useState(false);
+  const t = useTranslations('budget');
 
   useEffect(() => {
     let cancelled = false;
@@ -43,7 +45,7 @@ export function BudgetPill() {
       <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
         <div className="flex items-baseline justify-between">
           <div className="text-[10px] uppercase tracking-wider text-emerald-700">
-            Unlimited (BYOK)
+            {t('unlimited')}
           </div>
         </div>
         <div className="mt-1 text-xl font-semibold">∞ AI requests today</div>
@@ -62,10 +64,14 @@ export function BudgetPill() {
     <div className="rounded-lg border border-border p-4">
       <div className="flex items-baseline justify-between">
         <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-          Daily AI requests
+          {t('dailyRequests')}
         </div>
         <div className="text-[10px] text-muted-foreground">
-          Resets {new Date(snap.dayResetAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          {t('resets')}{' '}
+          {new Date(snap.dayResetAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
         </div>
       </div>
       <div className="mt-1 text-xl font-semibold">
@@ -75,12 +81,10 @@ export function BudgetPill() {
         <div className={`h-full ${tier} transition-all`} style={{ width: `${Math.round(pct * 100)}%` }} />
       </div>
       {snap.dailyRemaining === 0 ? (
-        <div className="mt-2 text-xs text-rose-700">
-          Cap reached. Add a BYOK key in Settings for unlimited use.
-        </div>
+        <div className="mt-2 text-xs text-rose-700">{t('capReached')}</div>
       ) : (
         <div className="mt-2 text-xs text-muted-foreground">
-          {snap.dailyRemaining} left today · always free
+          {snap.dailyRemaining} left today · {t('alwaysFree')}
         </div>
       )}
     </div>
