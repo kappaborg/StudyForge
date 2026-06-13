@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { apiGetCachedWithMeta, ApiError } from '../lib/dev-fetch';
 import { formatCacheAge } from '../lib/format-cache-age';
 import { FeatureFlagsPanel } from './feature-flags-panel';
@@ -53,6 +54,7 @@ export function InstructorDashboard() {
   const [courses, setCourses] = useState<CourseRow[]>([]);
   const [abuse, setAbuse] = useState<AbuseRow[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const tc = useTranslations('common');
   // Offline-cache surface, parity with the roadmap + concept-graph
   // viewers (D-0b / D-3). The dashboard hits 3 endpoints; we show ONE
   // banner using the OLDEST cached snapshot so the instructor never
@@ -107,7 +109,7 @@ export function InstructorDashboard() {
           onClick={() => void refresh()}
           className="rounded-md border border-border px-3 py-1 text-xs hover:bg-accent"
         >
-          Refresh
+          {tc('refresh')}
         </button>
       </header>
 

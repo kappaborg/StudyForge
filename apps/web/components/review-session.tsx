@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { track } from '../lib/analytics';
+import { useTranslations } from 'next-intl';
 import { formatCacheAge } from '../lib/format-cache-age';
 import {
   fetchDueCards,
@@ -43,6 +44,7 @@ export function ReviewSession() {
   const [error, setError] = useState<string | null>(null);
   const [revealed, setRevealed] = useState(false);
   const [busy, setBusy] = useState(false);
+  const tc = useTranslations('common');
   const [stats, setStats] = useState<SessionStats>({
     reviewed: 0,
     again: 0,
@@ -182,7 +184,7 @@ export function ReviewSession() {
           }}
           className="mt-3 rounded-md border border-border px-3 py-1.5 text-sm hover:bg-accent"
         >
-          Try again
+          {tc('tryAgain')}
         </button>
       </main>
     );

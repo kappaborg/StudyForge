@@ -38,5 +38,15 @@
   "settings": {
     "byokTitle": "Keys & Local AI",
     "byokSubtitle": "StudyForge is always free. Add a BYOK provider key for unlimited AI requests, or skip cloud entirely with the browser-local model."
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "close": "Close",
+    "loading": "Loading…",
+    "tryAgain": "Try again",
+    "refresh": "Refresh"
   }
 }

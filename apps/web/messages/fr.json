@@ -40,5 +40,15 @@
   "settings": {
     "byokTitle": "Clés et IA locale",
     "byokSubtitle": "StudyForge est toujours gratuit. Ajoutez votre propre clé (BYOK) pour des requêtes IA illimitées, ou évitez complètement le cloud avec le modèle exécuté dans votre navigateur."
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "close": "Fermer",
+    "loading": "Chargement…",
+    "tryAgain": "Réessayer",
+    "refresh": "Actualiser"
   }
 }

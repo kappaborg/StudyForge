@@ -40,5 +40,15 @@
   "settings": {
     "byokTitle": "Anahtarlar ve Yerel YZ",
     "byokSubtitle": "StudyForge her zaman ücretsizdir. Sınırsız YZ istekleri için kendi anahtarınızı (BYOK) ekleyin, ya da tarayıcı içinde çalışan model ile bulutu tamamen atlayın."
+  },
+  "common": {
+    "save": "Kaydet",
+    "cancel": "İptal",
+    "delete": "Sil",
+    "edit": "Düzenle",
+    "close": "Kapat",
+    "loading": "Yükleniyor…",
+    "tryAgain": "Yeniden dene",
+    "refresh": "Yenile"
   }
 }
