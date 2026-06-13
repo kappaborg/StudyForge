@@ -1,6 +1,8 @@
 {
   "nav": {
     "dashboard": "仪表板",
+    "review": "复习",
+    "mastery": "熟练度",
     "instructor": "教师",
     "settings": "设置",
     "search": "搜索"

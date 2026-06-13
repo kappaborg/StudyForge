@@ -1,6 +1,8 @@
 {
   "nav": {
     "dashboard": "اللوحة",
+    "review": "مراجعة",
+    "mastery": "إتقان",
     "instructor": "المدرّس",
     "settings": "الإعدادات",
     "search": "بحث"

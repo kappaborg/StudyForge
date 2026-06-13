@@ -1,6 +1,8 @@
 {
   "nav": {
     "dashboard": "Übersicht",
+    "review": "Wiederholen",
+    "mastery": "Beherrschung",
     "instructor": "Dozent",
     "settings": "Einstellungen",
     "search": "Suchen"

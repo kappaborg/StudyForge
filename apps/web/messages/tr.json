@@ -1,6 +1,8 @@
 {
   "nav": {
     "dashboard": "Panel",
+    "review": "Tekrar",
+    "mastery": "Yetkinlik",
     "instructor": "Eğitmen",
     "settings": "Ayarlar",
     "search": "Ara"

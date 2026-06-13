@@ -1,7 +1,10 @@
 import type { Metadata, Viewport } from 'next';
+import { NextIntlClientProvider } from 'next-intl';
+import { getLocale, getMessages } from 'next-intl/server';
 import { ThemePrehydrationScript } from '@studyforge/ui';
 import { Providers } from '../components/providers';
 import { PwaRegistrar } from '../components/pwa-registrar';
+import { directionFor, type Locale } from '../lib/i18n';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -34,14 +37,27 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // Resolve locale + messages on the server so the very first paint is
+  // already translated. ``getLocale`` walks the next-intl request
+  // config which reads the cookie set by ``setLocaleAction``.
+  const locale = (await getLocale()) as Locale;
+  const messages = await getMessages();
+  const dir = directionFor(locale);
+
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang={locale} dir={dir} suppressHydrationWarning>
       <head>
         <ThemePrehydrationScript />
       </head>
       <body className="bg-background text-foreground antialiased">
-        <Providers>{children}</Providers>
+        <NextIntlClientProvider locale={locale} messages={messages}>
+          <Providers>{children}</Providers>
+        </NextIntlClientProvider>
         <PwaRegistrar />
       </body>
     </html>

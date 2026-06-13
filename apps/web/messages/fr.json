@@ -1,6 +1,8 @@
 {
   "nav": {
     "dashboard": "Tableau de bord",
+    "review": "Réviser",
+    "mastery": "Maîtrise",
     "instructor": "Enseignant",
     "settings": "Paramètres",
     "search": "Rechercher"

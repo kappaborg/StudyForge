@@ -1,16 +1,19 @@
-'use client';
-
-import { createContext, useContext } from 'react';
-import en from '../messages/en.json';
-import es from '../messages/es.json';
-import fr from '../messages/fr.json';
-import de from '../messages/de.json';
-import tr from '../messages/tr.json';
-import zh from '../messages/zh.json';
-import ar from '../messages/ar.json';
+/**
+ * i18n primitives.
+ *
+ * The translation pipeline itself lives in ``next-intl``: this module
+ * only owns the locale registry + the metadata (display label, RTL
+ * direction) the rest of the app reaches for.
+ *
+ * Why not just re-export from ``next-intl``: components that need the
+ * locale LIST (the LocaleSwitcher options, the ``<html dir>`` decision
+ * in the root layout) want a plain array, not a translation hook.
+ */
 
 export const LOCALES = ['en', 'es', 'fr', 'de', 'tr', 'zh', 'ar'] as const;
 export type Locale = (typeof LOCALES)[number];
+
+export const DEFAULT_LOCALE: Locale = 'en';
 
 export const LOCALE_LABELS: Record<Locale, string> = {
   en: 'English',
@@ -22,38 +25,14 @@ export const LOCALE_LABELS: Record<Locale, string> = {
   ar: 'العربية',
 };
 
-export const RTL_LOCALES: Locale[] = ['ar'];
+const RTL_LOCALES: readonly Locale[] = ['ar'] as const;
 
-const messages: Record<Locale, Record<string, unknown>> = {
-  en, es, fr, de, tr, zh, ar,
-};
-
-interface I18n {
-  locale: Locale;
-  t: (key: string) => string;
+export function directionFor(locale: Locale): 'ltr' | 'rtl' {
+  return RTL_LOCALES.includes(locale) ? 'rtl' : 'ltr';
 }
 
-const I18nContext = createContext<I18n>({
-  locale: 'en',
-  t: (key) => key,
-});
-
-export function useI18n(): I18n {
-  return useContext(I18nContext);
-}
-
-export function I18nProviderContext(): typeof I18nContext {
-  return I18nContext;
-}
-
-/** Lookup ``a.b.c`` against the active locale, with a fallback to English. */
-export function translate(locale: Locale, key: string): string {
-  const parts = key.split('.');
-  const dive = (obj: unknown): unknown =>
-    parts.reduce<unknown>(
-      (acc, p) => (acc && typeof acc === 'object' ? (acc as Record<string, unknown>)[p] : undefined),
-      obj,
-    );
-  const out = dive(messages[locale]) ?? dive(messages.en);
-  return typeof out === 'string' ? out : key;
+export function isLocale(value: unknown): value is Locale {
+  return (
+    typeof value === 'string' && (LOCALES as readonly string[]).includes(value)
+  );
 }

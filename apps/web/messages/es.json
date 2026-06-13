@@ -1,6 +1,8 @@
 {
   "nav": {
     "dashboard": "Inicio",
+    "review": "Repasar",
+    "mastery": "Dominio",
     "instructor": "Instructor",
     "settings": "Ajustes",
     "search": "Buscar"
