@@ -36,5 +36,9 @@
   "footer": {
     "tagline": "对每位学生免费",
     "about": "关于"
+  },
+  "settings": {
+    "byokTitle": "密钥与本地 AI",
+    "byokSubtitle": "StudyForge 始终免费。添加你自己的密钥 (BYOK) 即可获得无限 AI 请求,或使用浏览器内本地模型彻底跳过云端。"
   }
 }

@@ -36,5 +36,9 @@
   "footer": {
     "tagline": "Kostenlos für jeden Studenten",
     "about": "Über uns"
+  },
+  "settings": {
+    "byokTitle": "Schlüssel & lokale KI",
+    "byokSubtitle": "StudyForge ist immer kostenlos. Füge deinen eigenen Schlüssel (BYOK) hinzu für unbegrenzte KI-Anfragen, oder überspringe die Cloud komplett mit dem browserlokalen Modell."
   }
 }

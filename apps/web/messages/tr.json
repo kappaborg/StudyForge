@@ -36,5 +36,9 @@
   "footer": {
     "tagline": "Her öğrenci için ücretsiz",
     "about": "Hakkında"
+  },
+  "settings": {
+    "byokTitle": "Anahtarlar ve Yerel YZ",
+    "byokSubtitle": "StudyForge her zaman ücretsizdir. Sınırsız YZ istekleri için kendi anahtarınızı (BYOK) ekleyin, ya da tarayıcı içinde çalışan model ile bulutu tamamen atlayın."
   }
 }

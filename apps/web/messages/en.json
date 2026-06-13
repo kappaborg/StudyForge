@@ -34,5 +34,9 @@
   "footer": {
     "tagline": "Free for every student",
     "about": "About"
+  },
+  "settings": {
+    "byokTitle": "Keys & Local AI",
+    "byokSubtitle": "StudyForge is always free. Add a BYOK provider key for unlimited AI requests, or skip cloud entirely with the browser-local model."
   }
 }

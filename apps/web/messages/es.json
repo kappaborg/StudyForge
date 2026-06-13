@@ -36,5 +36,9 @@
   "footer": {
     "tagline": "Gratis para todos los estudiantes",
     "about": "Acerca de"
+  },
+  "settings": {
+    "byokTitle": "Claves e IA local",
+    "byokSubtitle": "StudyForge siempre es gratis. Añade tu propia clave (BYOK) para solicitudes ilimitadas de IA, o evita la nube por completo con el modelo que corre en tu navegador."
   }
 }
