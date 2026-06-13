@@ -14,7 +14,8 @@ import {
 import '@xyflow/react/dist/style.css';
 
 import { track } from '../lib/analytics';
-import { apiGet, apiPost, ApiError } from '../lib/dev-fetch';
+import { apiGetCachedWithMeta, apiPost, ApiError } from '../lib/dev-fetch';
+import { formatCacheAge } from '../lib/format-cache-age';
 
 interface Concept {
   id: string;
@@ -143,11 +144,20 @@ function GraphInner({ courseId }: { courseId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [maxConcepts, setMaxConcepts] = useState(12);
+  // Offline-cache surface, parity with the roadmap viewer (D-0b).
+  // Concept graphs can be > 50 KB so the read-through write helps every
+  // student who flips into airplane mode mid-study.
+  const [fromCache, setFromCache] = useState(false);
+  const [cachedAt, setCachedAt] = useState<number | null>(null);
 
   const refresh = async () => {
     try {
-      const res = await apiGet<ConceptGraph>(`/v1/courses/${courseId}/concepts`);
-      setGraph(res);
+      const res = await apiGetCachedWithMeta<ConceptGraph>(
+        `/v1/courses/${courseId}/concepts`,
+      );
+      setGraph(res.value);
+      setFromCache(res.fromCache);
+      setCachedAt(res.cachedAt);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Failed to load graph');
     }
@@ -167,6 +177,10 @@ function GraphInner({ courseId }: { courseId: string }) {
         maxConcepts,
       });
       setGraph(res);
+      // A fresh extraction supersedes any cached snapshot — clear the
+      // banner state so the student isn't told they're reading stale data.
+      setFromCache(false);
+      setCachedAt(null);
       track('concepts.extracted', {
         courseId,
         conceptCount: res.concepts.length,
@@ -203,6 +217,24 @@ function GraphInner({ courseId }: { courseId: string }) {
 
   return (
     <div className="space-y-3">
+      {fromCache && (
+        <div
+          role="status"
+          className="rounded-md border border-amber-400/60 bg-amber-50/70 px-3 py-2 text-xs text-amber-900 dark:bg-amber-900/15 dark:text-amber-200"
+        >
+          {cachedAt ? (
+            <>
+              Viewing a cached concept graph from {formatCacheAge(cachedAt)}{' '}
+              ago. Re-extract or come back online to refresh.
+            </>
+          ) : (
+            <>
+              Viewing a cached concept graph. Re-extract or come back online
+              to refresh.
+            </>
+          )}
+        </div>
+      )}
       <section className="rounded-lg border border-border p-4 space-y-3">
         <div className="flex flex-col gap-2 md:flex-row md:items-end">
           <div className="flex-1">

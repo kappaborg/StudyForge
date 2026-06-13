@@ -21,6 +21,33 @@ mermaid.initialize({
   fontFamily: 'inherit',
 });
 
+/**
+ * Download the currently-rendered Mermaid SVG to disk. Mermaid emits an
+ * ``<svg>`` element under our ``renderRef`` host once render() completes;
+ * we copy its outerHTML and stamp the XML namespace so the file opens in
+ * any image viewer (Mermaid omits the namespace by default).
+ */
+function downloadDiagram(host: HTMLDivElement | null, kind: string): void {
+  if (typeof window === 'undefined' || !host) return;
+  const svg = host.querySelector('svg');
+  if (!svg) return;
+  // The XML namespace is required for browsers + image viewers to
+  // recognise the file as standalone SVG.
+  const clone = svg.cloneNode(true) as SVGElement;
+  if (!clone.getAttribute('xmlns')) {
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  }
+  const blob = new Blob([clone.outerHTML], { type: 'image/svg+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `studyforge-${kind}-${new Date().toISOString().slice(0, 10)}.svg`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 export function DiagramsPanel({ courseId }: { courseId: string }) {
   const [kind, setKind] = useState<Kind>('flowchart');
   const [query, setQuery] = useState('');
@@ -113,14 +140,22 @@ export function DiagramsPanel({ courseId }: { courseId: string }) {
 
       {diagram && (
         <section className="space-y-3">
-          <header className="flex items-baseline justify-between">
+          <header className="flex items-baseline justify-between gap-3">
             <h3 className="text-sm font-semibold">{diagram.kind}</h3>
-            <button
-              onClick={() => setShowSource((s) => !s)}
-              className="text-xs text-muted-foreground hover:text-foreground"
-            >
-              {showSource ? 'Hide source' : 'View source'}
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => downloadDiagram(renderRef.current, diagram.kind)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                Download SVG
+              </button>
+              <button
+                onClick={() => setShowSource((s) => !s)}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                {showSource ? 'Hide source' : 'View source'}
+              </button>
+            </div>
           </header>
           <div
             ref={renderRef}
