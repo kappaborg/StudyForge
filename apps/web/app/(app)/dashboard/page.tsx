@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { getTranslations } from 'next-intl/server';
 import { BudgetPill } from '../../../components/budget-pill';
 import { DailyPlan } from '../../../components/daily-plan';
 import { ExamScopesGrid } from '../../../components/exam-scopes-grid';
@@ -9,14 +10,18 @@ import { StreakCard } from '../../../components/streak-card';
 import { SubscriptionsPanel } from '../../../components/subscriptions-panel';
 import { TutorAsk } from '../../../components/tutor-ask';
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
+  // Server-side translation. The bundles already carry the keys
+  // (dashboard.title / subtitle / upload / openWorkspace / askAnything)
+  // — wiring just brings the rest of the dashboard surface onto the
+  // same i18n pipeline as the nav.
+  const t = await getTranslations('dashboard');
+
   return (
     <div className="space-y-10">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Dashboard</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Drop materials, ask questions, and pick up where you left off.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight">{t('title')}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
       </div>
 
       <DailyPlan />
@@ -26,7 +31,7 @@ export default function DashboardPage() {
           href="/upload"
           className="rounded-lg border border-border p-5 hover:bg-accent"
         >
-          <h2 className="font-medium">Upload materials</h2>
+          <h2 className="font-medium">{t('upload')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             PDF, slides, docs, notebooks, audio, and images — up to 1 GB.
             Indexed and ready to ask about within seconds.
@@ -36,7 +41,7 @@ export default function DashboardPage() {
           href="/upload"
           className="rounded-lg border border-border p-5 hover:bg-accent"
         >
-          <h2 className="font-medium">Open workspace</h2>
+          <h2 className="font-medium">{t('openWorkspace')}</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             One place for your tutor, study roadmap, flashcards, quizzes,
             and concept map — all grounded in your materials.
@@ -62,7 +67,7 @@ export default function DashboardPage() {
 
       <section className="space-y-3">
         <h2 className="text-sm font-medium uppercase tracking-wider text-muted-foreground">
-          Ask anything about your materials
+          {t('askAnything')}
         </h2>
         <TutorAsk placeholder="What is gradient descent?" />
       </section>
