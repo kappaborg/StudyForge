@@ -8,14 +8,16 @@ testers, on $0/month plans.
 
 - **Web** on Vercel (`https://YOUR-APP.vercel.app`) — the public URL
 - **API** on Render (`https://YOUR-API.onrender.com`) — NestJS
-- **Worker** on Render (`https://YOUR-WORKER.onrender.com`) — Python
+- **AI worker** on Render (`https://YOUR-AI-WORKER.onrender.com`) — Python (FastAPI, embedding + tutor stream + agents)
+- **Notification worker** on Render — Node background worker (Resend email dispatcher; skip if you don't want email)
+- **Sandbox runner** on Render *(optional)* — Python FastAPI runtime for student-uploaded code (only if you turn on the code-exec features)
 - **Postgres** on Neon — 3 GB free
 - **Redis** on Upstash — 10 k commands/day free
 - **Blob storage** on Cloudflare R2 — 10 GB free
-- **Email** on Resend — 3 k sends/month free
+- **Email** on Resend — 3 k sends/month free *(skip if no email)*
 - **Google OAuth** via Google Cloud Console — free
 
-Total time: ~90 minutes the first time through.
+Total time: ~90 minutes the first time through (~75 if you skip the notification worker; ~120 if you also stand up the sandbox runner).
 
 ## Before you start
 
@@ -30,7 +32,7 @@ push the latest commit, then point each service at the repo.
 ## Step 0 — push the latest commit to GitHub
 
 ```bash
-cd "/Users/kappasutra/Desktop/Student Helper"
+cd "/Users/kappasutra/Documents/Student Helper"
 git push origin main
 ```
 
@@ -144,7 +146,7 @@ Save:
 
 ---
 
-## Step 6 — Render (API + worker)
+## Step 6 — Render (API + workers)
 
 ### 6a. API service
 
@@ -177,11 +179,11 @@ Save:
 7. Go back to Step 5 in Google Cloud → edit the OAuth client → set **Authorized redirect URI** to `<that URL>/v1/auth/google/callback` and save.
 8. Back on Render → API service → **Environment** → set `GOOGLE_CALLBACK_URL` to the same URL → save (this restarts the service).
 
-### 6b. Worker service
+### 6b. AI worker service
 
 1. Render → **New** → **Web Service** → same repo.
 2. Configure:
-   - **Name**: `studyforge-worker`
+   - **Name**: `studyforge-ai-worker`
    - **Environment**: **Docker**
    - **Dockerfile Path**: `apps/ai-worker/Dockerfile`
    - **Docker Context Directory**: `.`
@@ -198,6 +200,62 @@ Save:
 5. Copy the live URL.
 6. Go to the API service → **Environment** → set `AI_WORKER_URL` to the worker URL → save.
 
+### 6c. Notification worker (optional — skip if you don't want email)
+
+The notification worker dispatches the `Notification` table's `email` rows
+via Resend with exponential-backoff retry (1 m → 5 m → 30 m → 2 h → 12 h,
+capped at `MAX_RETRIES=5`). The api still writes notifications to the
+table either way — without this worker the rows sit in `state='queued'`
+forever, which is harmless if you don't care about email delivery.
+
+1. Render → **New** → **Background Worker** (not Web Service — it has no
+   HTTP surface, the api owns ingest).
+2. Configure:
+   - **Name**: `studyforge-notification-worker`
+   - **Environment**: **Docker**
+   - **Dockerfile Path**: `apps/notification-worker/Dockerfile`
+   - **Docker Context Directory**: `.`
+   - **Instance Type**: **Free**
+3. Environment variables:
+   - `DATABASE_URL` (same pooled URL as the api — uses `FOR UPDATE SKIP LOCKED` so the connection-pool concern is the same as the api)
+   - `RESEND_API_KEY` from Step 4 (omit to run in **dryrun** mode — notifications progress to `delivered` without an actual send, useful while testing)
+   - `EMAIL_FROM` (same as api)
+   - `WEB_BASE_URL` (so the rendered emails link back to your Vercel URL)
+   - `NOTIFICATION_TICK_MS=30000` *(default; lower for faster delivery, raise to stay further under Resend's rate limit)*
+4. Create. First build takes ~4 min. Logs should show `tick: 0 processed`
+   every 30 seconds; that's a healthy idle state.
+
+### 6d. Sandbox runner (optional — only if you turn on code-exec features)
+
+Ephemeral, resource-capped executor for student-uploaded code (Python /
+JS for now). Process-level controls (RLIMIT_AS, RLIMIT_CPU, byte-capped
+stdout/stderr, wall-clock timeout) live in the service; **runtime-level**
+isolation (network namespace, syscall allowlist, read-only root FS) is
+owned by the container runtime. On Render's default runc, you get a
+container — adequate for trusted-tester demos, **not adequate for public
+exposure**. See `docs/adr/0003-sandbox-runtime.md` for the gVisor /
+Firecracker upgrade path.
+
+1. Render → **New** → **Web Service**.
+2. Configure:
+   - **Name**: `studyforge-sandbox-runner`
+   - **Environment**: **Docker**
+   - **Dockerfile Path**: `apps/sandbox-runner/Dockerfile`
+   - **Docker Context Directory**: `.`
+   - **Instance Type**: **Free**
+3. Environment variables: none required for a dev / trusted-tester
+   deployment. The service reads its caps (default 30 s wall-clock /
+   256 MB RAM / 64 KiB stdout-tail) from `apps/sandbox-runner/src/config.py`.
+4. Create. First build takes ~3 min.
+5. Copy the live URL → API service → **Environment** → set
+   `SANDBOX_RUNNER_URL` → save. (If unset, code-exec endpoints return
+   `503 sandbox unavailable`, which is the safe default.)
+
+> ⚠️ **Render free tier does NOT support `runsc` (gVisor) or any custom
+> runtime.** Step 6d on free is "trusted users only, no untrusted code."
+> When you outgrow that, the runbook for moving sandbox-runner to a
+> gVisor-equipped host lives in ADR-0003.
+
 ---
 
 ## Step 7 — run Prisma migrations against Neon
@@ -205,7 +263,7 @@ Save:
 From your laptop, with **both** URLs from Step 1 exported:
 
 ```bash
-cd "/Users/kappasutra/Desktop/Student Helper/apps/api"
+cd "/Users/kappasutra/Documents/Student Helper/apps/api"
 DATABASE_URL="<paste POOLED URL with &pgbouncer=true>" \
 DIRECT_URL="<paste DIRECT URL>" \
   pnpm exec prisma migrate deploy
@@ -263,6 +321,9 @@ You should see ~30 tables including `User`, `Tenant`, `Document`, `Chunk`, `Fold
    - One quiz under Materials → Quizzes
 4. Click **Review** → grade a card. Should round-trip without error.
 5. Cmd-K → search `photo`. Should match the demo doc/chunks via the Postgres fallback.
+6. Open **Settings** → change the language to (say) Türkçe. The nav and
+   dashboard re-render in the new locale; the choice persists across
+   reloads (it lives in a `NEXT_LOCALE` cookie, not localStorage).
 
 If anything 5xx's, check:
 - Render API service logs (most production errors land here)
@@ -282,6 +343,8 @@ If anything 5xx's, check:
 **Google OAuth "Test users" cap is 100 emails.** If you have more testers than that, you'll need to publish the OAuth app — which requires a verified domain. Until then, add each tester's Gmail to the OAuth consent screen → Test users list.
 
 **Audio uploads will fail by design** with the message *"Audio transcription is disabled on the public demo"*. This is correct. Re-enable by dropping `DISABLE_AUDIO=1` from the worker env, but the worker will OOM on Render free.
+
+**Render free Background Workers** (used for notification-worker in Step 6c) **do not sleep** the way Web Services do, but they share a 750 hr/month budget across all free services on the account. Two free Web Services + a free Background Worker fits; four free services on the same account will start hitting the cap before the month ends.
 
 ---
 
