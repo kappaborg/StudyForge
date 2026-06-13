@@ -60,12 +60,18 @@ for (const route of RTL_ROUTES) {
   test(`a11y · ${route.name}`, async ({ page, context }) => {
     // Set the locale cookie BEFORE the first navigation so SSR picks
     // ``ar`` up on the initial render — otherwise the first paint is
-    // LTR and the axe scan never sees the RTL surface.
+    // LTR and the axe scan never sees the RTL surface. We pass
+    // ``domain``/``path`` instead of ``url`` because the page hasn't
+    // navigated yet (it sits on ``about:blank``), and Playwright
+    // refuses to bind a cookie to a blank-page origin.
+    const baseUrl = process.env['PLAYWRIGHT_BASE_URL'] ?? 'http://localhost:3000';
+    const { hostname } = new URL(baseUrl);
     await context.addCookies([
       {
         name: 'NEXT_LOCALE',
         value: 'ar',
-        url: page.context().pages()[0]?.url() ?? 'http://localhost:3000',
+        domain: hostname,
+        path: '/',
         sameSite: 'Lax',
       },
     ]);
