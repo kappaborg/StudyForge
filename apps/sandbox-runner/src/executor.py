@@ -156,6 +156,19 @@ def execute(req: ExecutionRequest) -> ExecutionResult:
         # the interpreter). Surface clearly so the harness owner knows
         # it isn't a student-code failure.
         raise SandboxError(f"interpreter not found: {exc}") from exc
+    except ValueError as exc:
+        # ``subprocess.Popen`` rejects argv containing embedded null
+        # bytes (``\x00``) — Linux's execve refuses C-strings with
+        # embedded nulls. That's a user-input failure (the student
+        # uploaded code with a null), not a harness failure: surface
+        # it as a structured non-zero result so the caller sees the
+        # reason in stderr instead of catching an unexpected exception.
+        exit_code = -2
+        stdout_bytes = b""
+        stderr_bytes = (
+            f"sandbox-runner: refused to launch — source contains "
+            f"an illegal byte: {exc}"
+        ).encode()
     duration_ms = int((time.perf_counter() - started) * 1000)
 
     truncated_stdout = len(stdout_bytes) > MAX_OUTPUT_BYTES
