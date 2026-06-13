@@ -26,6 +26,7 @@ jobs:
       web: ${{ steps.filter.outputs.web }}
       api: ${{ steps.filter.outputs.api }}
       ai: ${{ steps.filter.outputs.ai }}
+      sandbox: ${{ steps.filter.outputs.sandbox }}
       packages: ${{ steps.filter.outputs.packages }}
       prompts: ${{ steps.filter.outputs.prompts }}
     steps:
@@ -45,6 +46,8 @@ jobs:
             ai:
               - 'apps/ai-worker/**'
               - 'packages/eval-harness/**'
+            sandbox:
+              - 'apps/sandbox-runner/**'
             packages:
               - 'packages/**'
             prompts:
@@ -113,6 +116,44 @@ jobs:
         run: uv run mypy src
 
       - name: Test
+        run: uv run pytest -q
+
+  sandbox:
+    # Mirror of the ``python`` job for the sandbox-runner service. Kept
+    # as a separate job (rather than a matrix in ``python``) so a
+    # sandbox-only regression doesn't taint the ai-worker signal and
+    # vice-versa — each owner sees the failure in their lane.
+    name: Sandbox · ruff · mypy · pytest
+    needs: changes
+    if: needs.changes.outputs.sandbox == 'true' || github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: apps/sandbox-runner
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Sync deps
+        run: uv sync --extra dev
+
+      - name: Lint
+        run: uv run ruff check src tests
+
+      - name: Typecheck
+        run: uv run mypy src
+
+      - name: Test
+        # The Linux runner enforces RLIMIT_AS so the memory-cap test
+        # that's skipped on macOS now actually runs here — exit code
+        # signals are platform-dependent but the cap engagement isn't.
         run: uv run pytest -q
 
   ai-eval:
