@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import {
   createScopeShareLink,
   getScopeShareLink,
@@ -30,6 +31,7 @@ interface Props {
  */
 export function ShareScopeModal({ scopeId, scopeTitle, onClose }: Props) {
   const toast = useToast();
+  const tc = useTranslations('common');
   const [link, setLink] = useState<ScopeShareLink | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -126,7 +128,7 @@ export function ShareScopeModal({ scopeId, scopeTitle, onClose }: Props) {
         </header>
 
         {loading ? (
-          <p className="text-xs text-muted-foreground">Loading…</p>
+          <p className="text-xs text-muted-foreground">{tc('loading')}</p>
         ) : link ? (
           <div className="space-y-3">
             <label className="block text-xs">

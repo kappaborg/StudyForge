@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { fetchChunk, type ChunkDetail } from '../lib/chunks-client';
 import { loadChunks } from '../lib/local-models-db';
 import { useAuth } from './auth-gate';
@@ -51,6 +52,7 @@ interface ChunkNeighborView {
 }
 
 export function CitationPreview({ source, onClose }: Props) {
+  const tc = useTranslations('common');
   const { me } = useAuth();
   const [view, setView] = useState<LocalView | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -145,7 +147,7 @@ export function CitationPreview({ source, onClose }: Props) {
                 ? `Chunk ${view.chunkId.slice(0, 8)}…${
                     view.page !== null ? ` · page ${view.page}` : ''
                   }`
-                : 'Loading…'}
+                : tc('loading')}
             </p>
           </div>
           <div className="flex items-center gap-1">

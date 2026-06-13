@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useTranslations } from 'next-intl';
 import { useFolders, type Folder } from '../lib/folders';
 
 const KIND_ORDER: Record<Folder['kind'], number> = {
@@ -33,6 +34,7 @@ export function FoldersSidebar({
 }) {
   const { folders, activeFolderId: hookActive, setActiveFolderId, loading, error, create, remove } =
     useFolders();
+  const tc = useTranslations('common');
   const [newName, setNewName] = useState('');
   const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -92,7 +94,7 @@ export function FoldersSidebar({
       {localError && <p className="px-2 text-xs text-red-500">{localError}</p>}
       <ul className="space-y-0.5">
         {loading && folders.length === 0 && (
-          <li className="px-2 text-xs text-muted-foreground">Loading…</li>
+          <li className="px-2 text-xs text-muted-foreground">{tc('loading')}</li>
         )}
         {sorted.map((folder) => {
           const isActive = active === folder.id;
