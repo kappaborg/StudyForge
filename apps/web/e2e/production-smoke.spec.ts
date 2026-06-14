@@ -117,6 +117,27 @@ test.describe('production smoke · API plumbing', () => {
     });
   });
 
+  test('/health/observability reports the Sentry wiring snapshot', async ({
+    request,
+  }) => {
+    // Confirms the introspection endpoint is reachable through the
+    // Vercel rewrite — doesn't assert ``sentry.enabled === true`` since
+    // that depends on the operator setting ``SENTRY_DSN`` on Render,
+    // which is a deliberate config choice. Visibility is the contract.
+    const response = await request.get(`${BASE}/health/observability`, {
+      timeout: 60_000,
+    });
+    expect(response.status()).toBe(200);
+    const body = await response.json();
+    expect(body).toMatchObject({
+      sentry: {
+        enabled: expect.any(Boolean),
+        scrubbedKeys: expect.any(Number),
+      },
+      ts: expect.any(String),
+    });
+  });
+
   test('protected API endpoint returns 401 with Problem+JSON shape', async ({
     request,
   }) => {

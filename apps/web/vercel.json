@@ -13,6 +13,10 @@
     {
       "source": "/health",
       "destination": "https://studyforge-y340.onrender.com/health"
+    },
+    {
+      "source": "/health/:path*",
+      "destination": "https://studyforge-y340.onrender.com/health/:path*"
     }
   ]
 }
