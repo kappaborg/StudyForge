@@ -11,11 +11,6 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
-  // ``production-smoke.spec.ts`` is opt-in only — it hits live Vercel +
-  // Render, has no business being run by the default CI job against
-  // localhost. The prod-smoke.yml workflow runs it explicitly via
-  // ``playwright test e2e/production-smoke.spec.ts``.
-  testIgnore: ['**/production-smoke.spec.ts'],
   fullyParallel: false,
   retries: process.env['CI'] ? 2 : 0,
   workers: 1,
@@ -33,7 +28,26 @@ export default defineConfig({
       // side, which adds the headers.
     },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  // Two projects so ``production-smoke.spec.ts`` (hits live Vercel +
+  // Render) is opt-in only:
+  //   - ``chromium``   default; matches everything EXCEPT production-
+  //                    smoke. This is what the standard CI job runs
+  //                    against a localhost server.
+  //   - ``production`` matches only the production-smoke spec. The
+  //                    prod-smoke.yml workflow runs it explicitly via
+  //                    ``playwright test --project=production``.
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+      testIgnore: ['**/production-smoke.spec.ts'],
+    },
+    {
+      name: 'production',
+      use: { ...devices['Desktop Chrome'] },
+      testMatch: ['**/production-smoke.spec.ts'],
+    },
+  ],
   webServer: process.env['PLAYWRIGHT_BASE_URL']
     ? undefined
     : {

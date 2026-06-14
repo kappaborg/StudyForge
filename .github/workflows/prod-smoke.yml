@@ -67,9 +67,9 @@ jobs:
       - name: Run production smoke
         env:
           PLAYWRIGHT_BASE_URL: ${{ inputs.target_url || 'https://study-forge-web.vercel.app' }}
-        # Only the production-smoke.spec.ts file — not the a11y spec,
-        # which depends on dev-auth and a local server.
-        run: pnpm --filter web exec playwright test e2e/production-smoke.spec.ts
+        # ``--project=production`` scopes Playwright to the production-
+        # smoke spec only. The default ``chromium`` project ignores it.
+        run: pnpm --filter web exec playwright test --project=production
 
       - name: Upload Playwright traces on failure
         if: failure()
