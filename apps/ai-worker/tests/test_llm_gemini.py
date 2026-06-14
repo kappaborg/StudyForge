@@ -267,9 +267,12 @@ async def test_provider_aclose_is_safe() -> None:
 
 
 @pytest.mark.asyncio
-async def test_complete_uses_query_param_auth() -> None:
-    """Gemini auth is ``?key=`` not Authorization header. The adapter
-    must put the key in the URL, not the headers."""
+async def test_complete_uses_header_auth_not_query_param() -> None:
+    """The Gemini API key MUST go in the ``x-goog-api-key`` header, NOT
+    the URL query string. URL query params leak the key into HTTP access
+    logs, CDN logs, browser devtools, and Sentry breadcrumbs that capture
+    the request URL. This test guards against a regression where someone
+    "fixes" the auth to use ``?key=`` again."""
 
     captured: dict[str, object] = {}
 
@@ -277,6 +280,7 @@ async def test_complete_uses_query_param_auth() -> None:
         captured["url"] = str(request.url)
         captured["auth_header"] = request.headers.get("authorization")
         captured["api_key_header"] = request.headers.get("x-api-key")
+        captured["goog_api_key_header"] = request.headers.get("x-goog-api-key")
         return httpx.Response(
             200,
             json={
@@ -301,8 +305,12 @@ async def test_complete_uses_query_param_auth() -> None:
     )
 
     assert res.text == "ok"
-    assert "key=my-secret-key" in captured["url"]  # type: ignore[operator]
-    # The api key must not leak into the auth header.
+    # The key must NOT appear anywhere in the URL.
+    assert "my-secret-key" not in str(captured["url"])
+    assert "key=" not in str(captured["url"])
+    # The key MUST appear in the ``x-goog-api-key`` header.
+    assert captured["goog_api_key_header"] == "my-secret-key"
+    # And it must NOT leak into other auth headers.
     assert captured["auth_header"] is None
     assert captured["api_key_header"] is None
 

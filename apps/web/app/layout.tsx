@@ -8,13 +8,17 @@ import { PwaRegistrar } from '../components/pwa-registrar';
 import { directionFor, type Locale } from '../lib/i18n';
 import './globals.css';
 
+const SITE_DESCRIPTION =
+  'Upload your course materials. Get a personalized, cited, AI-powered study experience.';
+const SITE_URL = 'https://study-forge-web.vercel.app';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
   title: {
     default: 'StudyForge AI',
     template: '%s · StudyForge AI',
   },
-  description:
-    'Upload your course materials. Get a personalized, cited, AI-powered study experience.',
+  description: SITE_DESCRIPTION,
   applicationName: 'StudyForge AI',
   manifest: '/manifest.webmanifest',
   appleWebApp: {
@@ -24,6 +28,23 @@ export const metadata: Metadata = {
   },
   formatDetection: { telephone: false },
   robots: { index: true, follow: true },
+  openGraph: {
+    type: 'website',
+    title: 'StudyForge AI — your course, your tutor, your roadmap',
+    description: SITE_DESCRIPTION,
+    siteName: 'StudyForge AI',
+    url: SITE_URL,
+    locale: 'en_US',
+    // ``app/opengraph-image.tsx`` auto-generates the 1200×630 PNG
+    // Next.js will inject the og:image meta tag automatically when
+    // that file is present, but we keep it declared here too so the
+    // metadata stays explicit + greppable.
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'StudyForge AI — your course, your tutor, your roadmap',
+    description: SITE_DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = {

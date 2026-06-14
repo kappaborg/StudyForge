@@ -2,7 +2,11 @@
 
 Google's ``generativelanguage.googleapis.com`` doesn't follow the OpenAI
 shape:
-  * Auth is via ``?key=`` query param, not a header
+  * Auth is via the ``x-goog-api-key`` header. Gemini also accepts
+    ``?key=`` in the URL query string, but that variant leaks the key
+    into every HTTP access log, CDN log, and Sentry breadcrumb that
+    captures the URL — header auth keeps the key in the request body
+    only.
   * Roles are ``user`` / ``model`` (no ``assistant``, no ``system``)
   * ``system`` content lives in a top-level ``systemInstruction`` block
   * Request body is ``contents: [{role, parts: [{text}]}]``
@@ -65,7 +69,7 @@ class GeminiProvider:
 
     async def complete(self, req: LLMRequest) -> LLMResponse:
         payload = build_gemini_payload(req)
-        url = f"{self._base_url}/models/{req.model}:generateContent?key={self._api_key}"
+        url = f"{self._base_url}/models/{req.model}:generateContent"
         response = await self._http.post(url, json=payload, headers=self._headers())
         raise_for_status(response)
         body = response.json()
@@ -78,7 +82,7 @@ class GeminiProvider:
         payload = build_gemini_payload(req)
         url = (
             f"{self._base_url}/models/{req.model}:streamGenerateContent"
-            f"?alt=sse&key={self._api_key}"
+            f"?alt=sse"
         )
         async with self._http.stream(
             "POST", url, json=payload, headers=self._headers()
@@ -127,7 +131,7 @@ class GeminiProvider:
         started = time.perf_counter()
         try:
             await self._http.get(
-                f"{self._base_url}/models?key={self._api_key}",
+                f"{self._base_url}/models",
                 headers=self._headers(),
                 timeout=5,
             )
@@ -136,7 +140,16 @@ class GeminiProvider:
             return {"ok": False, "latency_ms": int((time.perf_counter() - started) * 1000)}
 
     def _headers(self) -> dict[str, str]:
-        return {"content-type": "application/json", "accept": "application/json"}
+        # ``x-goog-api-key`` is Gemini's officially-supported header
+        # auth. Putting the key in the header instead of the URL
+        # query param keeps it out of HTTP access logs, browser
+        # devtools, CDN logs, and Sentry breadcrumbs that capture
+        # the request URL.
+        return {
+            "content-type": "application/json",
+            "accept": "application/json",
+            "x-goog-api-key": self._api_key,
+        }
 
 
 # ─────────────────────────────────────────────────────────────────────────────
