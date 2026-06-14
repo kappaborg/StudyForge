@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
 import { ThemePrehydrationScript } from '@studyforge/ui';
+import { Footer } from '../components/footer';
 import { Providers } from '../components/providers';
 import { PwaRegistrar } from '../components/pwa-registrar';
 import { directionFor, type Locale } from '../lib/i18n';
@@ -56,7 +57,17 @@ export default async function RootLayout({
       </head>
       <body className="bg-background text-foreground antialiased">
         <NextIntlClientProvider locale={locale} messages={messages}>
-          <Providers>{children}</Providers>
+          <Providers>
+            <div className="flex min-h-screen flex-col">
+              <div className="flex-1">{children}</div>
+              {/* Mounted at the root so unauthenticated visitors (landing,
+                  login, signup, /privacy, /terms, /about) see the same
+                  Privacy + Terms links App Store / Play reviewers will
+                  look for. The (app) shell deliberately doesn't mount
+                  its own Footer anymore to avoid a duplicate. */}
+              <Footer />
+            </div>
+          </Providers>
         </NextIntlClientProvider>
         <PwaRegistrar />
       </body>

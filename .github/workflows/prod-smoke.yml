@@ -1,0 +1,81 @@
+name: prod-smoke
+
+# Runs the production-smoke Playwright spec against the live Vercel +
+# Render deploy on a 6-hour cron, plus on-demand from the Actions tab.
+# Catches drift BETWEEN our pushes — a Render dyno that won't wake, a
+# Vercel rewrite that broke, an auth-boundary regression, a footer link
+# that vanished — before testers notice.
+#
+# The 10-step manual smoke in ``SMOKE_PRODUCTION.md`` still owns the
+# authenticated flows (OAuth round-trip, ingest, tutor stream, quiz
+# attempt). This workflow tests the public surface + plumbing only.
+#
+# On failure: GitHub Actions sends an email to repo admins by default
+# (Settings → Notifications → "Send notifications for failed workflows").
+# Wire a Slack / Discord webhook later if you want faster alerting; the
+# email is free and the only thing left.
+#
+# Override target via ``workflow_dispatch`` inputs — handy for testing
+# the spec against a Vercel preview deploy before promoting it.
+
+on:
+  schedule:
+    # Every 6 hours, offset 5 min past the hour to dodge the busy
+    # top-of-hour cron rush on GitHub-hosted runners.
+    - cron: '5 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      target_url:
+        description: 'Override PLAYWRIGHT_BASE_URL (default: live production)'
+        required: false
+        type: string
+        default: 'https://study-forge-web.vercel.app'
+
+# Don't queue overlapping runs. If one is mid-flight when the next cron
+# fires, skip — the freshest signal is what matters.
+concurrency:
+  group: prod-smoke
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: 9.12.0
+  NODE_VERSION: '20.18.0'
+
+jobs:
+  smoke:
+    name: Public surface + API plumbing
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile=false
+
+      - name: Install Playwright browsers
+        run: pnpm --filter web e2e:install
+
+      - name: Run production smoke
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ inputs.target_url || 'https://study-forge-web.vercel.app' }}
+        # Only the production-smoke.spec.ts file — not the a11y spec,
+        # which depends on dev-auth and a local server.
+        run: pnpm --filter web exec playwright test e2e/production-smoke.spec.ts
+
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-smoke-traces
+          path: apps/web/test-results/
+          retention-days: 7
+          if-no-files-found: ignore

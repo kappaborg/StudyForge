@@ -4,7 +4,6 @@ import { AppShellWithSidebar } from '../../components/app-shell-with-sidebar';
 import { AuthGate } from '../../components/auth-gate';
 import { AxeReporter } from '../../components/axe-reporter';
 import { CommandPalette } from '../../components/command-palette';
-import { Footer } from '../../components/footer';
 import { LocaleSwitcher } from '../../components/locale-switcher';
 import { MobileNavProvider } from '../../components/mobile-nav-provider';
 import { NotificationsBell } from '../../components/notifications-bell';
@@ -96,7 +95,6 @@ export default async function AppLayout({
               </div>
             </header>
             <AppShellWithSidebar>{children}</AppShellWithSidebar>
-            <Footer />
             <CommandPalette />
             <SelectionMenu />
             <AxeReporter />
