@@ -7,7 +7,7 @@ export const metadata = {
 
 export default function AboutPage() {
   return (
-    <article className="prose prose-neutral mx-auto max-w-2xl dark:prose-invert">
+    <main className="prose prose-neutral mx-auto max-w-2xl px-6 py-12 dark:prose-invert">
       <h1>StudyForge is free. Forever.</h1>
 
       <p>
@@ -75,6 +75,6 @@ export default function AboutPage() {
         than money, and there's no money to give anyway. Pull requests are
         welcome.
       </p>
-    </article>
+    </main>
   );
 }

@@ -8,7 +8,7 @@ export const metadata = {
 
 export default function TermsPage() {
   return (
-    <article className="prose prose-neutral mx-auto max-w-2xl dark:prose-invert">
+    <main className="prose prose-neutral mx-auto max-w-2xl px-6 py-12 dark:prose-invert">
       <h1>Terms of Service</h1>
       <p className="text-sm text-muted-foreground">Last updated: 2026-06-13</p>
 
@@ -158,6 +158,6 @@ export default function TermsPage() {
         See also: <Link href="/privacy">Privacy Policy</Link> ·{' '}
         <Link href="/about">About</Link>
       </p>
-    </article>
+    </main>
   );
 }

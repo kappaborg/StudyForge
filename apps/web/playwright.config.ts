@@ -11,6 +11,11 @@ import { defineConfig, devices } from '@playwright/test';
  */
 export default defineConfig({
   testDir: './e2e',
+  // ``production-smoke.spec.ts`` is opt-in only — it hits live Vercel +
+  // Render, has no business being run by the default CI job against
+  // localhost. The prod-smoke.yml workflow runs it explicitly via
+  // ``playwright test e2e/production-smoke.spec.ts``.
+  testIgnore: ['**/production-smoke.spec.ts'],
   fullyParallel: false,
   retries: process.env['CI'] ? 2 : 0,
   workers: 1,

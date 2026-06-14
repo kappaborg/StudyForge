@@ -21,6 +21,7 @@ const SENSITIVE_KEYS = new Set([
 ]);
 
 let initialized = false;
+let sentryEnabled = false;
 
 export function setupObservability(): void {
   if (initialized) return;
@@ -38,7 +39,25 @@ export function setupObservability(): void {
       return event;
     },
   });
+  sentryEnabled = true;
   console.log('[observability] Sentry enabled (errors-only)');
+}
+
+/**
+ * Status snapshot for the ``/health/observability`` endpoint. Lets the
+ * operator confirm the safety net is actually wired in production
+ * without spelunking through Render env vars. Silent-disabled Sentry
+ * (DSN unset) is the failure mode this is designed to surface.
+ */
+export function observabilityStatus(): {
+  sentry: { enabled: boolean; scrubbedKeys: number };
+} {
+  return {
+    sentry: {
+      enabled: sentryEnabled,
+      scrubbedKeys: SENSITIVE_KEYS.size,
+    },
+  };
 }
 
 function scrub(node: unknown): void {
